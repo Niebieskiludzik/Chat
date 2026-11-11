@@ -67,8 +67,18 @@
         } else {
             document.getElementById('current-room-title').textContent = '#' + roomName;
             document.getElementById('room-avatar').textContent = roomName.charAt(0).toUpperCase();
+            
+            // Poproś o zgodę na powiadomienia przy wejściu na czat
+            requestNotificationPermission();
+
             loadMessages();
             setupRealtime();
+        }
+
+        function requestNotificationPermission() {
+            if ("Notification" in window && Notification.permission === "default") {
+                Notification.requestPermission();
+            }
         }
 
         // OPTYMALIZACIJA: Pobieramy tylko ostatnich 50 wiadomości
@@ -201,6 +211,16 @@
 
         function closeSettings() {
             document.getElementById('settings-modal').classList.remove('active');
+        }
+
+        function sendSystemNotification(sender, text) {
+            // Sprawdzamy czy przeglądarka obsługuje powiadomienia, czy użytkownik dał zgodę i czy strona jest w tle
+            if ("Notification" in window && Notification.permission === "granted" && document.hidden) {
+                new Notification(`Nowa wiadomość od: ${sender}`, {
+                    body: text,
+                    tag: 'chat-message' // Zapobiega spamowaniu wieloma okienkami
+                });
+            }
         }
 
         async function saveSettings() {
