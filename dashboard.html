@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Private Hub - Menu</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <!-- Pasek propozycji na górze -->
+    <div id="proposal-bar" class="top-proposal-bar" style="display:none;">
+        <div class="proposal-info">
+            ⚽ <span id="proposal-title">Ładowanie...</span> (Autor: <span id="proposal-author">...</span>)
+            <div id="proposal-summary" style="font-size: 11px; color: var(--text-muted); margin-top: 3px;">Odpowiedzi: brak</div>
+        </div>
+        <div class="proposal-actions">
+            <button onclick="respondProposal('Będę')">Będę</button>
+            <button onclick="openTimePrompt()">Inna godzina</button>
+            <button class="btn-decline" onclick="respondProposal('Nie dam rady')">Nie dam rady</button>
+        </div>
+    </div>
+
+    <div class="dashboard-container">
+        <div class="dashboard-header">
+            <div>
+                <h2 style="color: var(--gold); font-size: 22px;">Witaj, <span id="user-display-name">Użytkowniku</span></h2>
+                <span id="dash-device-badge" class="device-badge">Komputer</span>
+            </div>
+            <button onclick="logout()" class="back-btn" style="width: auto;">Wyloguj</button>
+        </div>
+
+        <h3 class="section-title">Wybierz Czat</h3>
+        <div id="rooms-grid" class="rooms-grid">
+            <!-- Pokoje ładowane dynamicznie -->
+        </div>
+
+        <div class="proposal-creator">
+            <h3>Stwórz nową propozycję / harmonogram</h3>
+            <div class="admin-row">
+                <input type="text" id="new-proposal-title" placeholder="np. Mecz na boisku dziś o 18:00">
+                <button onclick="createProposal()">Opublikuj</button>
+            </div>
+        </div>
+
+        <!-- Panel Admina -->
+        <div id="admin-panel" class="admin-panel" style="display:none;">
+            <h3>Panel Administratora</h3>
+            <div class="admin-row">
+                <input type="text" id="new-user-name" placeholder="Nowy login">
+                <input type="text" id="new-user-pass" placeholder="Tymczasowe hasło">
+                <button onclick="createAccount()">Stwórz konto</button>
+            </div>
+            <div class="admin-row">
+                <input type="text" id="new-room-name" placeholder="Nazwa nowego pokoju czatu">
+                <button onclick="createRoom()">Stwórz pokój</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        const currentUser = getCurrentUser();
+        if (!currentUser) {
+            window.location.href = 'index.html';
+        } else {
+            document.getElementById('user-display-name').textContent = currentUser.username;
+            document.getElementById('dash-device-badge').textContent = `Urządzenie: ${detectDeviceType()}`;
+            if (currentUser.is_admin) {
+                document.getElementById('admin-panel').style.display = 'block';
+            }
+            loadDashboard();
+        }
+
+        async function loadDashboard() {
+            const { data: rooms } = await supabaseClient.from('rooms').select('*');
+            const grid = document.getElementById('rooms-grid');
+            grid.innerHTML = '';
+            
+            if (rooms) {
+                rooms.forEach(room => {
+                    grid.innerHTML += `
+                        <div class="room-card" onclick="openRoom('${room.id}', '${room.name}')">
+                            <h3># ${room.name}</h3>
+                            <p>Wejdź na czat</p>
+                        </div>
+                    `;
+                });
+            }
+            loadActiveProposal();
+        }
+
+        function openRoom(roomId, roomName) {
+            localStorage.setItem('current_room_id', roomId);
+            localStorage.setItem('current_room_name', roomName);
+            window.location.href = 'chat.html';
+        }
+
+        async function createAccount() {
+            const username = document.getElementById('new-user-name').value.trim();
+            const password = document.getElementById('new-user-pass').value.trim();
+            if (!username || !password) return alert('Uzupełnij dane');
+
+            const { error } = await supabaseClient.from('users').insert([{ username, password, is_admin: false }]);
+            if (error) alert('Błąd: ' + error.message);
+            else {
+                alert('Utworzono konto!');
+                document.getElementById('new-user-name').value = '';
+                document.getElementById('new-user-pass').value = '';
+            }
+        }
+
+        async function createRoom() {
+            const name = document.getElementById('new-room-name').value.trim();
+            if (!name) return alert('Podaj nazwę');
+
+            const { error } = await supabaseClient.from('rooms').insert([{ name }]);
+            if (error) alert('Błąd: ' + error.message);
+            else {
+                alert('Utworzono pokój!');
+                document.getElementById('new-room-name').value = '';
+                loadDashboard();
+            }
+        }
+
+        async function createProposal() {
+            const title = document.getElementById('new-proposal-title').value.trim();
+            if (!title) return alert('Wpisz treść');
+
+            const { error } = await supabaseClient.from('proposals').insert([{
+                title: title,
+                created_by: currentUser.username,
+                responses: {}
+            }]);
+
+            if (error) alert('Błąd: ' + error.message);
+            else {
+                alert('Opublikowano!');
+                document.getElementById('new-proposal-title').value = '';
+                loadActiveProposal();
+            }
+        }
+
+        async function loadActiveProposal() {
+            const { data } = await supabaseClient.from('proposals').select('*').order('created_at', { ascending: false }).limit(1);
+            const bar = document.getElementById('proposal-bar');
+            
+            if (data && data.length > 0) {
+                const prop = data[0];
+                document.getElementById('proposal-title').textContent = prop.title;
+                document.getElementById('proposal-author').textContent = prop.created_by;
+                
+                let summaryText = 'Odpowiedzi: ';
+                const responses = prop.responses || {};
+                const entries = Object.entries(responses);
+                if (entries.length === 0) {
+                    summaryText += 'brak';
+                } else {
+                    summaryText += entries.map(([user, info]) => `${user}: ${info.status}${info.time !== 'Standardowa' ? ' ('+info.time+')' : ''}`).join(' | ');
+                }
+                document.getElementById('proposal-summary').textContent = summaryText;
+                bar.style.display = 'flex';
+            } else {
+                bar.style.display = 'none';
+            }
+        }
+
+        async function respondProposal(status, customTime = 'Standardowa') {
+            const { data } = await supabaseClient.from('proposals').select('*').order('created_at', { ascending: false }).limit(1);
+            if (!data || data.length === 0) return;
+            const prop = data[0];
+
+            let responses = prop.responses || {};
+            responses[currentUser.username] = { status, time: customTime };
+
+            const { error } = await supabaseClient.from('proposals').update({ responses }).eq('id', prop.id);
+            if (!error) loadActiveProposal();
+        }
+
+        function openTimePrompt() {
+            const time = prompt("Wpisz godzinę (np. 17:30):");
+            if (time) respondProposal('Będę o innej godzinie', time);
+        }
+    </script>
+</body>
+</html>
