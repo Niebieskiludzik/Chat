@@ -1,0 +1,78 @@
+:root {
+    --bg-color: #080808;
+    --card-bg: #141414;
+    --border-color: #262626;
+    --gold: #d4af37;
+    --gold-hover: #f3c653;
+    --text-main: #f5f5f5;
+    --text-muted: #888888;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+body { background-color: var(--bg-color); color: var(--text-main); min-height: 100vh; display: flex; flex-direction: column; }
+
+/* Ekran logowania */
+.login-container { display: flex; justify-content: center; align-items: center; height: 100vh; padding: 20px; }
+.login-card { background: var(--card-bg); border: 1px solid var(--border-color); padding: 30px; border-radius: 12px; width: 100%; max-width: 400px; box-shadow: 0 10px 30px rgba(0,0,0,0.8); }
+.login-card h2 { color: var(--gold); margin-bottom: 24px; text-align: center; letter-spacing: 1px; }
+
+.input-group { margin-bottom: 16px; }
+.input-group label { display: block; font-size: 13px; color: var(--text-muted); margin-bottom: 6px; }
+.input-group input { width: 100%; padding: 12px; background: #000; border: 1px solid var(--border-color); color: #fff; border-radius: 6px; font-size: 15px; }
+.input-group input:focus { border-color: var(--gold); outline: none; }
+
+button { background: var(--gold); color: #000; border: none; padding: 12px; width: 100%; border-radius: 6px; font-weight: bold; font-size: 15px; cursor: pointer; transition: background 0.2s; }
+button:hover { background: var(--gold-hover); }
+
+/* Pasek propozycji na górze */
+.top-proposal-bar { background: linear-gradient(90deg, #1f1908, #141414); border-bottom: 1px solid var(--gold); padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.proposal-info { font-size: 14px; color: var(--text-main); }
+.proposal-info span { color: var(--gold); font-weight: bold; }
+.proposal-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.proposal-actions button { width: auto; padding: 6px 14px; font-size: 13px; margin: 0; }
+.btn-decline { background: #333; color: #ff5555 !important; }
+.btn-decline:hover { background: #444; }
+
+.device-badge { background: #1a1a1a; border: 1px solid var(--border-color); color: var(--gold); padding: 4px 10px; border-radius: 20px; font-size: 11px; display: inline-block; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* Dashboard */
+.dashboard-container { max-width: 900px; width: 100%; margin: 30px auto; padding: 0 20px; flex: 1; }
+.dashboard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+.section-title { font-size: 20px; color: var(--gold); border-bottom: 1px solid var(--border-color); padding-bottom: 8px; margin-bottom: 16px; }
+
+.rooms-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-bottom: 30px; }
+.room-card { background: var(--card-bg); border: 1px solid var(--border-color); padding: 20px; border-radius: 8px; cursor: pointer; transition: 0.2s; }
+.room-card:hover { border-color: var(--gold); transform: translateY(-2px); }
+.room-card h3 { font-size: 16px; margin-bottom: 6px; color: var(--text-main); }
+.room-card p { font-size: 13px; color: var(--text-muted); }
+
+.admin-panel, .proposal-creator { background: var(--card-bg); border: 1px solid var(--border-color); padding: 20px; border-radius: 8px; margin-top: 20px; }
+.admin-panel h3, .proposal-creator h3 { color: var(--gold); margin-bottom: 12px; font-size: 16px; }
+.admin-row { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.admin-row input { flex: 1; min-width: 150px; padding: 8px; background: #000; border: 1px solid var(--border-color); color: #fff; border-radius: 4px; }
+.admin-row button { width: auto; padding: 8px 16px; }
+
+/* Podstrona czatu */
+.chat-container { display: flex; flex-direction: column; height: 100vh; max-width: 900px; margin: 0 auto; width: 100%; border-left: 1px solid var(--border-color); border-right: 1px solid var(--border-color); }
+.chat-header { background: var(--card-bg); padding: 15px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+.back-btn { background: transparent; color: var(--gold); border: 1px solid var(--gold); width: auto; padding: 6px 12px; font-size: 13px; }
+.back-btn:hover { background: var(--gold); color: #000; }
+
+.chat-messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; background: #0b0b0b; }
+.message { background: var(--card-bg); border: 1px solid var(--border-color); padding: 10px 14px; border-radius: 8px; max-width: 75%; position: relative; }
+.message.mine { align-self: flex-end; border-color: #332b0e; background: #121008; }
+.message .sender { font-size: 12px; color: var(--gold); margin-bottom: 4px; font-weight: bold; }
+.message .text { font-size: 14px; word-break: break-word; }
+.message .meta { font-size: 10px; color: var(--text-muted); text-align: right; margin-top: 4px; }
+
+.typing-indicator { padding: 6px 20px; font-size: 12px; color: var(--gold); font-style: italic; background: #0b0b0b; min-height: 25px; }
+
+.chat-input-bar { background: var(--card-bg); padding: 15px; border-top: 1px solid var(--border-color); display: flex; gap: 10px; }
+.chat-input-bar input { flex: 1; padding: 12px; background: #000; border: 1px solid var(--border-color); color: #fff; border-radius: 6px; }
+.chat-input-bar button { width: 100px; }
+
+@media (max-width: 600px) {
+    .top-proposal-bar { flex-direction: column; align-items: flex-start; }
+    .proposal-actions { width: 100%; justify-content: space-between; }
+    .proposal-actions button { flex: 1; text-align: center; }
+}
