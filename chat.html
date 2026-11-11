@@ -28,6 +28,10 @@
 
     <script src="app.js"></script>
     <script>
+        // Zmienne globalne zdefiniowane na samej górze
+        let chatChannel = null;
+        let typingTimeout = null;
+
         const currentUser = getCurrentUser();
         const roomId = localStorage.getItem('current_room_id');
         const roomName = localStorage.getItem('current_room_name');
@@ -40,13 +44,9 @@
             setupRealtime();
         }
 
-        let chatChannel = null;
-        let typingTimeout = null;
-
         async function loadMessages() {
             const container = document.getElementById('chat-messages');
             
-            // Pobieramy wiadomości oraz ewentualny błąd
             const { data: messages, error } = await supabaseClient
                 .from('messages')
                 .select('*')
@@ -94,7 +94,6 @@
                 { event: 'INSERT', schema: 'public', table: 'messages' }, 
                 payload => {
                     if (String(payload.new.room_id) === String(roomId)) {
-                        // Jeśli był komunikat o braku wiadomości, usuwamy go przed dodaniem nowej
                         const container = document.getElementById('chat-messages');
                         if (container.innerHTML.includes('Brak wiadomości')) {
                             container.innerHTML = '';
@@ -151,3 +150,5 @@
             if (e.key === 'Enter') sendMessage();
         }
     </script>
+</body>
+</html>
