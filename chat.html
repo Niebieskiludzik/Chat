@@ -35,7 +35,7 @@
         if (!currentUser || !roomId) {
             window.location.href = 'index.html';
         } else {
-            document.getElementById('current-room-title').textContent = '#' + roomName;
+            document.getElementById('current-room-title').textContent = '#' + (roomName || 'Czat');
             loadMessages();
             setupRealtime();
         }
@@ -45,5 +45,109 @@
 
         async function loadMessages() {
             const container = document.getElementById('chat-messages');
-            const { data: messages } = await supabaseClient
+            
+            // Pobieramy wiadomości oraz ewentualny błąd
+            const { data: messages, error } = await supabaseClient
                 .from('messages')
+                .select('*')
+                .eq('room_id', roomId)
+                .order('created_at', { ascending: true });
+
+            if (error) {
+                console.error("Błąd pobierania wiadomości:", error);
+                container.innerHTML = `<div style="color: #ff5555; padding: 20px; text-align: center;">Błąd bazy danych: ${error.message}</div>`;
+                return;
+            }
+
+            container.innerHTML = '';
+            if (messages && messages.length > 0) {
+                messages.forEach(msg => appendMessageUI(msg));
+            } else {
+                container.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 40px;">Brak wiadomości w tym pokoju. Napisz coś jako pierwszy!</div>`;
+            }
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function appendMessageUI(msg) {
+            const container = document.getElementById('chat-messages');
+            const isMine = msg.sender === currentUser.username;
+            
+            container.innerHTML += `
+                <div class="message ${isMine ? 'mine' : ''}">
+                    <div class="sender">${escapeHtml(msg.sender)}</div>
+                    <div class="text">${escapeHtml(msg.content)}</div>
+                    <div class="meta">${new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                </div>
+            `;
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function setupRealtime() {
+            if (chatChannel) {
+                supabaseClient.removeChannel(chatChannel);
+            }
+
+            chatChannel = supabaseClient.channel('room-rt-' + roomId);
+
+            chatChannel.on(
+                'postgres_changes', 
+                { event: 'INSERT', schema: 'public', table: 'messages' }, 
+                payload => {
+                    if (String(payload.new.room_id) === String(roomId)) {
+                        // Jeśli był komunikat o braku wiadomości, usuwamy go przed dodaniem nowej
+                        const container = document.getElementById('chat-messages');
+                        if (container.innerHTML.includes('Brak wiadomości')) {
+                            container.innerHTML = '';
+                        }
+                        appendMessageUI(payload.new);
+                    }
+                }
+            );
+
+            chatChannel.on('broadcast', { event: 'typing' }, payload => {
+                const typingEl = document.getElementById('typing-indicator');
+                if (payload.payload.username !== currentUser.username) {
+                    typingEl.textContent = `${payload.payload.username} pisze...`;
+                    clearTimeout(window.typingTimer);
+                    window.typingTimer = setTimeout(() => {
+                        typingEl.textContent = '';
+                    }, 2000);
+                }
+            });
+
+            chatChannel.subscribe((status) => {
+                console.log("Status połączenia Realtime:", status);
+            });
+        }
+
+        function notifyTyping() {
+            if (!chatChannel) return;
+            chatChannel.send({
+                type: 'broadcast',
+                event: 'typing',
+                payload: { username: currentUser.username }
+            });
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('message-input');
+            const text = input.value.trim();
+            if (!text) return;
+
+            const { error } = await supabaseClient.from('messages').insert([{
+                room_id: roomId,
+                sender: currentUser.username,
+                content: text
+            }]);
+
+            if (error) {
+                alert("Nie udało się wysłać wiadomości: " + error.message);
+            } else {
+                input.value = '';
+            }
+        }
+
+        function handleKeyPress(e) {
+            if (e.key === 'Enter') sendMessage();
+        }
+    </script>
