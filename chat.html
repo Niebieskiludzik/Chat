@@ -32,9 +32,19 @@
 
         <div id="typing-indicator" class="typing-indicator"></div>
 
+        <!-- Pasek pisania z przyciskiem plusa -->
         <div class="chat-input-bar">
+            <div class="attach-container">
+                <button class="attach-btn" onclick="toggleAttachMenu()" title="Więcej opcji">+</button>
+                <!-- Rozwijane menu pod plusem -->
+                <div id="attach-menu" class="attach-menu">
+                    <div class="attach-menu-item" onclick="promptProposeTime()">⏰ Zaproponuj godzinę</div>
+                    <div class="attach-menu-item" onclick="promptProposeMatch()">⚽ Wyślij miejsce i godzinę gry</div>
+                </div>
+            </div>
+
             <input type="text" id="message-input" placeholder="Napisz wiadomość..." oninput="notifyTyping()" onkeypress="handleKeyPress(event)">
-            <button onclick="sendMessage()">Wyślij</button>
+            <button class="send-btn" onclick="sendMessage()">Wyślij</button>
         </div>
     </div>
 
@@ -42,13 +52,16 @@
     <div id="settings-modal" class="modal">
         <div class="modal-content">
             <h3>Ustawienia konta</h3>
-            <div class="input-group">
-                <label>Link do Twojego avatara (URL obrazka)</label>
-                <input type="text" id="setting-avatar-url" placeholder="https://example.com/avatar.jpg">
+            <div class="avatar-preview" id="modal-avatar-preview">U</div>
+            
+            <div class="input-group" style="text-align: left;">
+                <label>Wybierz zdjęcie profilowe</label>
+                <input type="file" id="avatar-file-input" accept="image/*" onchange="previewAndCompressImage(event)" style="color: var(--text-main);">
             </div>
+
             <button onclick="saveSettings()" style="margin-bottom: 10px;">Zapisz zmiany</button>
             <button class="btn-decline" onclick="logout()" style="width:100%; padding:12px; border-radius:6px; border:none; font-weight:bold; cursor:pointer;">Wyloguj się</button>
-            <button onclick="closeSettings()" style="background:transparent; color:var(--text-muted); margin-top:10px;">Zamknij</button>
+            <button onclick="closeSettings()" style="background:transparent; color:var(--text-muted); margin-top:10px; border:none; cursor:pointer;">Zamknij</button>
         </div>
     </div>
 
@@ -56,6 +69,7 @@
     <script>
         let chatChannel = null;
         let typingTimeout = null;
+        let compressedAvatarBase64 = null;
 
         const currentUser = getCurrentUser();
         const roomIdRaw = localStorage.getItem('current_room_id');
@@ -67,21 +81,61 @@
         } else {
             document.getElementById('current-room-title').textContent = '#' + roomName;
             document.getElementById('room-avatar').textContent = roomName.charAt(0).toUpperCase();
-            
-            // Poproś o zgodę na powiadomienia przy wejściu na czat
-            requestNotificationPermission();
-
             loadMessages();
             setupRealtime();
         }
 
-        function requestNotificationPermission() {
-            if ("Notification" in window && Notification.permission === "default") {
-                Notification.requestPermission();
+        // Zamykanie menu po kliknięciu poza nim
+        window.addEventListener('click', function(e) {
+            if (!e.target.closest('.attach-container')) {
+                document.getElementById('attach-menu').classList.remove('active');
+            }
+        });
+
+        function toggleAttachMenu() {
+            document.getElementById('attach-menu').classList.toggle('active');
+        }
+
+        // Funkcje dodatkowe z menu plusa
+        function promptProposeTime() {
+            toggleAttachMenu();
+            const time = prompt("Podaj proponowaną godzinę (np. 18:30):");
+            if (time) {
+                sendSpecialMessage(`⏰ **Propozycja godziny:** ${time}`);
             }
         }
 
-        // OPTYMALIZACIJA: Pobieramy tylko ostatnich 50 wiadomości
+        function promptProposeMatch() {
+            toggleAttachMenu();
+            const location = prompt("Podaj miejsce (np. Boisko szkolne / Orlik):");
+            if (!location) return;
+            const time = prompt("Podaj godzinę meczu (np. 17:00):");
+            if (!time) return;
+
+            sendSpecialMessage(`⚽ **Ustalenia gry:**\n📍 Miejsce: ${location}\n🕒 Godzina: ${time}`);
+        }
+
+        async function sendSpecialMessage(formattedText) {
+            const { data, error } = await supabaseClient.from('messages').insert([{
+                room_id: roomId,
+                sender: currentUser.username,
+                content: formattedText
+            }]).select();
+
+            if (!error && data && data.length > 0) {
+                const newMsg = data[0];
+                appendMessageUI(newMsg);
+                if (chatChannel) {
+                    chatChannel.send({
+                        type: 'broadcast',
+                        event: 'new_message',
+                        payload: { message: newMsg }
+                    });
+                }
+            }
+        }
+
+        // Pobieranie 50 ostatnich wiadomości
         async function loadMessages() {
             const container = document.getElementById('chat-messages');
             container.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 20px;">Ładowanie najnowszych wiadomości...</div>`;
@@ -90,8 +144,8 @@
                 .from('messages')
                 .select('*')
                 .eq('room_id', roomId)
-                .order('created_at', { ascending: false }) // Najpierw najnowsze
-                .limit(50);                                 // Ograniczenie do 50 sztuk (optymalizacja)
+                .order('created_at', { ascending: false })
+                .limit(50);
 
             if (error) {
                 container.innerHTML = `<div style="color: #ff5555; padding: 20px; text-align: center;">Błąd bazy danych: ${error.message}</div>`;
@@ -100,7 +154,6 @@
 
             container.innerHTML = '';
             if (messages && messages.length > 0) {
-                // Odwracamy tablicę, żeby najstarsze z tej 50 były na górze, a najnowsze na dole
                 messages.reverse().forEach(msg => appendMessageUI(msg));
             } else {
                 container.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 40px;">Brak wiadomości w tym pokoju. Napisz coś jako pierwszy!</div>`;
@@ -118,12 +171,15 @@
             const isMine = msg.sender === currentUser.username;
             const firstLetter = msg.sender.charAt(0).toUpperCase();
             
+            // Konwersja prostych enterów na nową linię
+            const formattedContent = escapeHtml(msg.content).replace(/\n/g, '<br>');
+            
             container.innerHTML += `
                 <div class="message ${isMine ? 'mine' : ''}">
                     <div class="avatar avatar-sm">${firstLetter}</div>
                     <div class="message-content">
                         <div class="sender">${escapeHtml(msg.sender)}</div>
-                        <div class="text">${escapeHtml(msg.content)}</div>
+                        <div class="text">${formattedContent}</div>
                         <div class="meta">${new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
                     </div>
                 </div>
@@ -146,14 +202,14 @@
                 }
             });
 
-            chatChannel.on('broadcast', { event: 'new_message' }, payload => {
-                if (payload.payload && payload.payload.message) {
-                    const msg = payload.payload.message;
-                    if (msg.sender !== currentUser.username) {
-                        appendMessageUI(msg);
-                        // Wysyłamy powiadomienie systemowe, jeśli ktoś napisał, a okno jest w tle
-                        sendSystemNotification(msg.sender, msg.content);
-                    }
+            chatChannel.on('broadcast', { event: 'typing' }, payload => {
+                const typingEl = document.getElementById('typing-indicator');
+                if (payload.payload.username !== currentUser.username) {
+                    typingEl.textContent = `${payload.payload.username} pisze...`;
+                    clearTimeout(window.typingTimer);
+                    window.typingTimer = setTimeout(() => {
+                        typingEl.textContent = '';
+                    }, 2000);
                 }
             });
 
@@ -205,7 +261,13 @@
         }
 
         function openSettings() {
-            document.getElementById('setting-avatar-url').value = currentUser.avatar || '';
+            compressedAvatarBase64 = currentUser.avatar || null;
+            const preview = document.getElementById('modal-avatar-preview');
+            if (compressedAvatarBase64) {
+                preview.innerHTML = `<img src="${compressedAvatarBase64}" alt="Preview">`;
+            } else {
+                preview.textContent = currentUser.username.charAt(0).toUpperCase();
+            }
             document.getElementById('settings-modal').classList.add('active');
         }
 
@@ -213,28 +275,60 @@
             document.getElementById('settings-modal').classList.remove('active');
         }
 
-        function sendSystemNotification(sender, text) {
-            // Sprawdzamy czy przeglądarka obsługuje powiadomienia, czy użytkownik dał zgodę i czy strona jest w tle
-            if ("Notification" in window && Notification.permission === "granted" && document.hidden) {
-                new Notification(`Nowa wiadomość od: ${sender}`, {
-                    body: text,
-                    tag: 'chat-message' // Zapobiega spamowaniu wieloma okienkami
-                });
+        function previewAndCompressImage(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = function(e) {
+                const img = new Image();
+                img.src = e.target.result;
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 120;
+                    const MAX_HEIGHT = 120;
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > height) {
+                        if (width > MAX_WIDTH) {
+                            height *= MAX_WIDTH / width;
+                            width = MAX_WIDTH;
+                        }
+                    } else {
+                        if (height > MAX_HEIGHT) {
+                            width *= MAX_HEIGHT / height;
+                            height = MAX_HEIGHT;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    compressedAvatarBase64 = canvas.toDataURL('image/jpeg', 0.7);
+                    document.getElementById('modal-avatar-preview').innerHTML = `<img src="${compressedAvatarBase64}" alt="Preview">`;
+                }
             }
         }
 
         async function saveSettings() {
-            const avatarUrl = document.getElementById('setting-avatar-url').value.trim();
+            const updateData = {};
+            if (compressedAvatarBase64 !== null) {
+                updateData.avatar = compressedAvatarBase64;
+            }
             
             const { error } = await supabaseClient
                 .from('users')
-                .update({ avatar: avatarUrl })
+                .update(updateData)
                 .eq('id', currentUser.id);
 
             if (error) {
                 alert('Błąd zapisu ustawień: ' + error.message);
             } else {
-                currentUser.avatar = avatarUrl;
+                if (compressedAvatarBase64 !== null) currentUser.avatar = compressedAvatarBase64;
                 setCurrentUser(currentUser);
                 alert('Zapisano ustawienia!');
                 closeSettings();
