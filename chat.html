@@ -1,36 +1,49 @@
-function setupRealtime() {
-            // Zamknięcie poprzedniego kanału, jeśli istniał
-            if (chatChannel) {
-                supabaseClient.removeChannel(chatChannel);
-            }
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Private Hub - Czat</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h3 id="current-room-title" style="color: var(--gold);">Czat</h3>
+            <button class="back-btn" onclick="window.location.href='dashboard.html'">Wróć do menu</button>
+        </div>
+        
+        <div id="chat-messages" class="chat-messages">
+            <!-- Wiadomości -->
+        </div>
 
-            chatChannel = supabaseClient.channel('room-rt-' + roomId);
+        <div id="typing-indicator" class="typing-indicator"></div>
 
-            // Nasłuchiwanie nowych wiadomości (filtrujemy w JS, co jest w 100% niezawodne)
-            chatChannel.on(
-                'postgres_changes', 
-                { event: 'INSERT', schema: 'public', table: 'messages' }, 
-                payload => {
-                    // Sprawdzamy czy nowa wiadomość dotyczy dokładnie tego pokoju
-                    if (String(payload.new.room_id) === String(roomId)) {
-                        appendMessageUI(payload.new);
-                    }
-                }
-            );
+        <div class="chat-input-bar">
+            <input type="text" id="message-input" placeholder="Napisz wiadomość..." oninput="notifyTyping()" onkeypress="handleKeyPress(event)">
+            <button onclick="sendMessage()">Wyślij</button>
+        </div>
+    </div>
 
-            // Nasłuchiwanie stanu pisania (Broadcast)
-            chatChannel.on('broadcast', { event: 'typing' }, payload => {
-                const typingEl = document.getElementById('typing-indicator');
-                if (payload.payload.username !== currentUser.username) {
-                    typingEl.textContent = `${payload.payload.username} pisze...`;
-                    clearTimeout(window.typingTimer);
-                    window.typingTimer = setTimeout(() => {
-                        typingEl.textContent = '';
-                    }, 2000);
-                }
-            });
+    <script src="app.js"></script>
+    <script>
+        const currentUser = getCurrentUser();
+        const roomId = localStorage.getItem('current_room_id');
+        const roomName = localStorage.getItem('current_room_name');
 
-            chatChannel.subscribe((status) => {
-                console.log("Status połączenia Realtime:", status);
-            });
+        if (!currentUser || !roomId) {
+            window.location.href = 'index.html';
+        } else {
+            document.getElementById('current-room-title').textContent = '#' + roomName;
+            loadMessages();
+            setupRealtime();
         }
+
+        let chatChannel = null;
+        let typingTimeout = null;
+
+        async function loadMessages() {
+            const container = document.getElementById('chat-messages');
+            const { data: messages } = await supabaseClient
+                .from('messages')
