@@ -1,84 +1,22 @@
-<!DOCTYPE html>
-<html lang="pl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Private Hub - Czat</title>
-    <link rel="stylesheet" href="style.css">
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-</head>
-<body>
-    <div class="chat-container">
-        <div class="chat-header">
-            <h3 id="current-room-title" style="color: var(--gold);">Czat</h3>
-            <button class="back-btn" onclick="window.location.href='dashboard.html'">Wróć do menu</button>
-        </div>
-        
-        <div id="chat-messages" class="chat-messages">
-            <!-- Wiadomości -->
-        </div>
-
-        <div id="typing-indicator" class="typing-indicator"></div>
-
-        <div class="chat-input-bar">
-            <input type="text" id="message-input" placeholder="Napisz wiadomość..." oninput="notifyTyping()" onkeypress="handleKeyPress(event)">
-            <button onclick="sendMessage()">Wyślij</button>
-        </div>
-    </div>
-
-    <script src="app.js"></script>
-    <script>
-        const currentUser = getCurrentUser();
-        const roomId = localStorage.getItem('current_room_id');
-        const roomName = localStorage.getItem('current_room_name');
-
-        if (!currentUser || !roomId) {
-            window.location.href = 'index.html';
-        } else {
-            document.getElementById('current-room-title').textContent = '#' + roomName;
-            loadMessages();
-            setupRealtime();
-        }
-
-        let chatChannel = null;
-        let typingTimeout = null;
-
-        async function loadMessages() {
-            const container = document.getElementById('chat-messages');
-            const { data: messages } = await supabaseClient
-                .from('messages')
-                .select('*')
-                .eq('room_id', roomId)
-                .order('created_at', { ascending: true });
-
-            container.innerHTML = '';
-            if (messages) {
-                messages.forEach(msg => appendMessageUI(msg));
+function setupRealtime() {
+            // Zamknięcie poprzedniego kanału, jeśli istniał
+            if (chatChannel) {
+                supabaseClient.removeChannel(chatChannel);
             }
-            container.scrollTop = container.scrollHeight;
-        }
 
-        function appendMessageUI(msg) {
-            const container = document.getElementById('chat-messages');
-            const isMine = msg.sender === currentUser.username;
-            
-            container.innerHTML += `
-                <div class="message ${isMine ? 'mine' : ''}">
-                    <div class="sender">${escapeHtml(msg.sender)}</div>
-                    <div class="text">${escapeHtml(msg.content)}</div>
-                    <div class="meta">${new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
-                </div>
-            `;
-            container.scrollTop = container.scrollHeight;
-        }
-
-        function setupRealtime() {
             chatChannel = supabaseClient.channel('room-rt-' + roomId);
 
-            // Nasłuchiwanie nowych wiadomości na żywo w bazie
-            chatChannel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `room_id=eq.${roomId}` }, payload => {
-                appendMessageUI(payload.new);
-            });
+            // Nasłuchiwanie nowych wiadomości (filtrujemy w JS, co jest w 100% niezawodne)
+            chatChannel.on(
+                'postgres_changes', 
+                { event: 'INSERT', schema: 'public', table: 'messages' }, 
+                payload => {
+                    // Sprawdzamy czy nowa wiadomość dotyczy dokładnie tego pokoju
+                    if (String(payload.new.room_id) === String(roomId)) {
+                        appendMessageUI(payload.new);
+                    }
+                }
+            );
 
             // Nasłuchiwanie stanu pisania (Broadcast)
             chatChannel.on('broadcast', { event: 'typing' }, payload => {
@@ -92,35 +30,7 @@
                 }
             });
 
-            chatChannel.subscribe();
-        }
-
-        function notifyTyping() {
-            if (!chatChannel) return;
-            chatChannel.send({
-                type: 'broadcast',
-                event: 'typing',
-                payload: { username: currentUser.username }
+            chatChannel.subscribe((status) => {
+                console.log("Status połączenia Realtime:", status);
             });
         }
-
-        async function sendMessage() {
-            const input = document.getElementById('message-input');
-            const text = input.value.trim();
-            if (!text) return;
-
-            await supabaseClient.from('messages').insert([{
-                room_id: roomId,
-                sender: currentUser.username,
-                content: text
-            }]);
-
-            input.value = '';
-        }
-
-        function handleKeyPress(e) {
-            if (e.key === 'Enter') sendMessage();
-        }
-    </script>
-</body>
-</html>
