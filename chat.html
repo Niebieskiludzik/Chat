@@ -146,14 +146,14 @@
                 }
             });
 
-            chatChannel.on('broadcast', { event: 'typing' }, payload => {
-                const typingEl = document.getElementById('typing-indicator');
-                if (payload.payload.username !== currentUser.username) {
-                    typingEl.textContent = `${payload.payload.username} pisze...`;
-                    clearTimeout(window.typingTimer);
-                    window.typingTimer = setTimeout(() => {
-                        typingEl.textContent = '';
-                    }, 2000);
+            chatChannel.on('broadcast', { event: 'new_message' }, payload => {
+                if (payload.payload && payload.payload.message) {
+                    const msg = payload.payload.message;
+                    if (msg.sender !== currentUser.username) {
+                        appendMessageUI(msg);
+                        // Wysyłamy powiadomienie systemowe, jeśli ktoś napisał, a okno jest w tle
+                        sendSystemNotification(msg.sender, msg.content);
+                    }
                 }
             });
 
