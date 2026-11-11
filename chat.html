@@ -8,12 +8,24 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-    <div class="chat-container">
-        <div class="chat-header">
-            <h3 id="current-room-title" style="color: var(--gold);">Czat</h3>
-            <button class="back-btn" onclick="window.location.href='dashboard.html'">Wróć do menu</button>
+    <!-- Navbar na czacie -->
+    <header class="navbar">
+        <div class="nav-left">
+            <button class="nav-btn" onclick="window.location.href='dashboard.html'">⬅ Wróć</button>
         </div>
-        
+        <div class="nav-center">
+            <div class="avatar" id="room-avatar">#</div>
+            <div>
+                <div class="nav-title" id="current-room-title">Czat</div>
+                <div class="nav-subtitle">Zaszyfrowany pokój</div>
+            </div>
+        </div>
+        <div class="nav-right" style="justify-content: flex-end;">
+            <button class="nav-btn" onclick="openSettings()">⚙️</button>
+        </div>
+    </header>
+
+    <div class="chat-container">
         <div id="chat-messages" class="chat-messages">
             <!-- Wiadomości -->
         </div>
@@ -26,40 +38,50 @@
         </div>
     </div>
 
+    <!-- Modal Ustawień -->
+    <div id="settings-modal" class="modal">
+        <div class="modal-content">
+            <h3>Ustawienia konta</h3>
+            <div class="input-group">
+                <label>Link do Twojego avatara (URL obrazka)</label>
+                <input type="text" id="setting-avatar-url" placeholder="https://example.com/avatar.jpg">
+            </div>
+            <button onclick="saveSettings()" style="margin-bottom: 10px;">Zapisz zmiany</button>
+            <button class="btn-decline" onclick="logout()" style="width:100%; padding:12px; border-radius:6px; border:none; font-weight:bold; cursor:pointer;">Wyloguj się</button>
+            <button onclick="closeSettings()" style="background:transparent; color:var(--text-muted); margin-top:10px;">Zamknij</button>
+        </div>
+    </div>
+
     <script src="app.js"></script>
     <script>
         let chatChannel = null;
         let typingTimeout = null;
 
         const currentUser = getCurrentUser();
-        // Pobieramy ID pokoju i konwertujemy na liczbę (INT), żeby baza danych go nie odrzuciła
         const roomIdRaw = localStorage.getItem('current_room_id');
         const roomId = roomIdRaw ? parseInt(roomIdRaw, 10) : null;
-        const roomName = localStorage.getItem('current_room_name');
-
-        console.log("Zalogowany użytkownik:", currentUser);
-        console.log("Aktualny pokój ID:", roomId, "Nazwa:", roomName);
+        const roomName = localStorage.getItem('current_room_name') || 'Czat';
 
         if (!currentUser || !roomId || isNaN(roomId)) {
-            console.error("Brak danych użytkownika lub pokoju! Przekierowanie do logowania.");
             window.location.href = 'index.html';
         } else {
-            document.getElementById('current-room-title').textContent = '#' + (roomName || 'Czat');
+            document.getElementById('current-room-title').textContent = '#' + roomName;
+            document.getElementById('room-avatar').textContent = roomName.charAt(0).toUpperCase();
             loadMessages();
             setupRealtime();
         }
 
+        // OPTYMALIZACIJA: Pobieramy tylko ostatnich 50 wiadomości
         async function loadMessages() {
             const container = document.getElementById('chat-messages');
-            container.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 20px;">Ładowanie wiadomości...</div>`;
+            container.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 20px;">Ładowanie najnowszych wiadomości...</div>`;
             
             const { data: messages, error } = await supabaseClient
                 .from('messages')
                 .select('*')
                 .eq('room_id', roomId)
-                .order('created_at', { ascending: true });
-
-            console.log("Pobrane wiadomości z bazy:", messages, "Błąd:", error);
+                .order('created_at', { ascending: false }) // Najpierw najnowsze
+                .limit(50);                                 // Ograniczenie do 50 sztuk (optymalizacja)
 
             if (error) {
                 container.innerHTML = `<div style="color: #ff5555; padding: 20px; text-align: center;">Błąd bazy danych: ${error.message}</div>`;
@@ -68,7 +90,8 @@
 
             container.innerHTML = '';
             if (messages && messages.length > 0) {
-                messages.forEach(msg => appendMessageUI(msg));
+                // Odwracamy tablicę, żeby najstarsze z tej 50 były na górze, a najnowsze na dole
+                messages.reverse().forEach(msg => appendMessageUI(msg));
             } else {
                 container.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 40px;">Brak wiadomości w tym pokoju. Napisz coś jako pierwszy!</div>`;
             }
@@ -78,17 +101,21 @@
         function appendMessageUI(msg) {
             const container = document.getElementById('chat-messages');
             
-            if (container.innerHTML.includes('Brak wiadomości') || container.innerHTML.includes('Ładowanie wiadomości')) {
+            if (container.innerHTML.includes('Brak wiadomości') || container.innerHTML.includes('Ładowanie najnowszych')) {
                 container.innerHTML = '';
             }
 
             const isMine = msg.sender === currentUser.username;
+            const firstLetter = msg.sender.charAt(0).toUpperCase();
             
             container.innerHTML += `
                 <div class="message ${isMine ? 'mine' : ''}">
-                    <div class="sender">${escapeHtml(msg.sender)}</div>
-                    <div class="text">${escapeHtml(msg.content)}</div>
-                    <div class="meta">${new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                    <div class="avatar avatar-sm">${firstLetter}</div>
+                    <div class="message-content">
+                        <div class="sender">${escapeHtml(msg.sender)}</div>
+                        <div class="text">${escapeHtml(msg.content)}</div>
+                        <div class="meta">${new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                    </div>
                 </div>
             `;
             container.scrollTop = container.scrollHeight;
@@ -102,7 +129,6 @@
             chatChannel = supabaseClient.channel('room-rt-' + roomId);
 
             chatChannel.on('broadcast', { event: 'new_message' }, payload => {
-                console.log("Odebrano impuls nowej wiadomości:", payload);
                 if (payload.payload && payload.payload.message) {
                     if (payload.payload.message.sender !== currentUser.username) {
                         appendMessageUI(payload.payload.message);
@@ -121,9 +147,7 @@
                 }
             });
 
-            chatChannel.subscribe((status) => {
-                console.log("Status połączenia Realtime:", status);
-            });
+            chatChannel.subscribe();
         }
 
         function notifyTyping() {
@@ -140,8 +164,6 @@
             const text = input.value.trim();
             if (!text) return;
 
-            console.log("Wysyłanie wiadomości...", { room_id: roomId, sender: currentUser.username, content: text });
-
             const { data, error } = await supabaseClient.from('messages').insert([{
                 room_id: roomId,
                 sender: currentUser.username,
@@ -149,7 +171,6 @@
             }]).select();
 
             if (error) {
-                console.error("Błąd wysyłania:", error);
                 alert("Nie udało się wysłać wiadomości: " + error.message);
             } else {
                 input.value = '';
@@ -171,6 +192,33 @@
 
         function handleKeyPress(e) {
             if (e.key === 'Enter') sendMessage();
+        }
+
+        function openSettings() {
+            document.getElementById('setting-avatar-url').value = currentUser.avatar || '';
+            document.getElementById('settings-modal').classList.add('active');
+        }
+
+        function closeSettings() {
+            document.getElementById('settings-modal').classList.remove('active');
+        }
+
+        async function saveSettings() {
+            const avatarUrl = document.getElementById('setting-avatar-url').value.trim();
+            
+            const { error } = await supabaseClient
+                .from('users')
+                .update({ avatar: avatarUrl })
+                .eq('id', currentUser.id);
+
+            if (error) {
+                alert('Błąd zapisu ustawień: ' + error.message);
+            } else {
+                currentUser.avatar = avatarUrl;
+                setCurrentUser(currentUser);
+                alert('Zapisano ustawienia!');
+                closeSettings();
+            }
         }
     </script>
 </body>
