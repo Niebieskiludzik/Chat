@@ -8,6 +8,23 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
+    <!-- Navbar -->
+    <header class="navbar">
+        <div class="nav-left">
+            <span class="device-badge" id="dash-device-badge" style="margin:0;">PC</span>
+        </div>
+        <div class="nav-center">
+            <div class="avatar" id="nav-user-avatar">U</div>
+            <div>
+                <div class="nav-title" id="user-display-name">Użytkowniku</div>
+                <div class="nav-subtitle">Panel główny</div>
+            </div>
+        </div>
+        <div class="nav-right" style="justify-content: flex-end;">
+            <button class="nav-btn" onclick="openSettings()">⚙️ Ustawienia</button>
+        </div>
+    </header>
+
     <!-- Pasek propozycji na górze -->
     <div id="proposal-bar" class="top-proposal-bar" style="display:none;">
         <div class="proposal-info">
@@ -22,14 +39,6 @@
     </div>
 
     <div class="dashboard-container">
-        <div class="dashboard-header">
-            <div>
-                <h2 style="color: var(--gold); font-size: 22px;">Witaj, <span id="user-display-name">Użytkowniku</span></h2>
-                <span id="dash-device-badge" class="device-badge">Komputer</span>
-            </div>
-            <button onclick="logout()" class="back-btn" style="width: auto;">Wyloguj</button>
-        </div>
-
         <h3 class="section-title">Wybierz Czat</h3>
         <div id="rooms-grid" class="rooms-grid">
             <!-- Pokoje ładowane dynamicznie -->
@@ -58,6 +67,20 @@
         </div>
     </div>
 
+    <!-- Modal Ustawień -->
+    <div id="settings-modal" class="modal">
+        <div class="modal-content">
+            <h3>Ustawienia konta</h3>
+            <div class="input-group">
+                <label>Link do Twojego avatara (URL obrazka)</label>
+                <input type="text" id="setting-avatar-url" placeholder="https://example.com/avatar.jpg">
+            </div>
+            <button onclick="saveSettings()" style="margin-bottom: 10px;">Zapisz zmiany</button>
+            <button class="btn-decline" onclick="logout()" style="width:100%; padding:12px; border-radius:6px; border:none; font-weight:bold; cursor:pointer;">Wyloguj się</button>
+            <button onclick="closeSettings()" style="background:transparent; color:var(--text-muted); margin-top:10px;">Zamknij</button>
+        </div>
+    </div>
+
     <script src="app.js"></script>
     <script>
         const currentUser = getCurrentUser();
@@ -65,7 +88,16 @@
             window.location.href = 'index.html';
         } else {
             document.getElementById('user-display-name').textContent = currentUser.username;
-            document.getElementById('dash-device-badge').textContent = `Urządzenie: ${detectDeviceType()}`;
+            document.getElementById('dash-device-badge').textContent = detectDeviceType();
+            
+            // Ustawienie avatara w navbarze
+            const avatarEl = document.getElementById('nav-user-avatar');
+            if (currentUser.avatar) {
+                avatarEl.innerHTML = `<img src="${currentUser.avatar}" alt="Avatar">`;
+            } else {
+                avatarEl.textContent = currentUser.username.charAt(0).toUpperCase();
+            }
+
             if (currentUser.is_admin) {
                 document.getElementById('admin-panel').style.display = 'block';
             }
@@ -79,10 +111,14 @@
             
             if (rooms) {
                 rooms.forEach(room => {
+                    const firstLetter = room.name.charAt(0).toUpperCase();
                     grid.innerHTML += `
                         <div class="room-card" onclick="openRoom('${room.id}', '${room.name}')">
-                            <h3># ${room.name}</h3>
-                            <p>Wejdź na czat</p>
+                            <div class="avatar">${firstLetter}</div>
+                            <div>
+                                <h3># ${room.name}</h3>
+                                <p>Kliknij, aby wejść</p>
+                            </div>
                         </div>
                     `;
                 });
@@ -94,6 +130,34 @@
             localStorage.setItem('current_room_id', roomId);
             localStorage.setItem('current_room_name', roomName);
             window.location.href = 'chat.html';
+        }
+
+        function openSettings() {
+            document.getElementById('setting-avatar-url').value = currentUser.avatar || '';
+            document.getElementById('settings-modal').classList.add('active');
+        }
+
+        function closeSettings() {
+            document.getElementById('settings-modal').classList.remove('active');
+        }
+
+        async function saveSettings() {
+            const avatarUrl = document.getElementById('setting-avatar-url').value.trim();
+            
+            const { error } = await supabaseClient
+                .from('users')
+                .update({ avatar: avatarUrl })
+                .eq('id', currentUser.id);
+
+            if (error) {
+                alert('Błąd zapisu ustawień: ' + error.message);
+            } else {
+                currentUser.avatar = avatarUrl;
+                setCurrentUser(currentUser);
+                alert('Zapisano ustawienia!');
+                closeSettings();
+                location.reload();
+            }
         }
 
         async function createAccount() {
