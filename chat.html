@@ -32,10 +32,16 @@
         let typingTimeout = null;
 
         const currentUser = getCurrentUser();
-        const roomId = localStorage.getItem('current_room_id');
+        // Pobieramy ID pokoju i konwertujemy na liczbę (INT), żeby baza danych go nie odrzuciła
+        const roomIdRaw = localStorage.getItem('current_room_id');
+        const roomId = roomIdRaw ? parseInt(roomIdRaw, 10) : null;
         const roomName = localStorage.getItem('current_room_name');
 
-        if (!currentUser || !roomId) {
+        console.log("Zalogowany użytkownik:", currentUser);
+        console.log("Aktualny pokój ID:", roomId, "Nazwa:", roomName);
+
+        if (!currentUser || !roomId || isNaN(roomId)) {
+            console.error("Brak danych użytkownika lub pokoju! Przekierowanie do logowania.");
             window.location.href = 'index.html';
         } else {
             document.getElementById('current-room-title').textContent = '#' + (roomName || 'Czat');
@@ -45,6 +51,7 @@
 
         async function loadMessages() {
             const container = document.getElementById('chat-messages');
+            container.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 20px;">Ładowanie wiadomości...</div>`;
             
             const { data: messages, error } = await supabaseClient
                 .from('messages')
@@ -52,8 +59,9 @@
                 .eq('room_id', roomId)
                 .order('created_at', { ascending: true });
 
+            console.log("Pobrane wiadomości z bazy:", messages, "Błąd:", error);
+
             if (error) {
-                console.error("Błąd pobierania wiadomości:", error);
                 container.innerHTML = `<div style="color: #ff5555; padding: 20px; text-align: center;">Błąd bazy danych: ${error.message}</div>`;
                 return;
             }
@@ -70,8 +78,7 @@
         function appendMessageUI(msg) {
             const container = document.getElementById('chat-messages');
             
-            // Usuwamy komunikat o braku wiadomości, jeśli jest widoczny
-            if (container.innerHTML.includes('Brak wiadomości')) {
+            if (container.innerHTML.includes('Brak wiadomości') || container.innerHTML.includes('Ładowanie wiadomości')) {
                 container.innerHTML = '';
             }
 
@@ -94,17 +101,15 @@
 
             chatChannel = supabaseClient.channel('room-rt-' + roomId);
 
-            // 1. Nasłuchiwanie impulsu nowej wiadomości (Broadcast)
             chatChannel.on('broadcast', { event: 'new_message' }, payload => {
+                console.log("Odebrano impuls nowej wiadomości:", payload);
                 if (payload.payload && payload.payload.message) {
-                    // Dodajemy wiadomość tylko wtedy, gdy nie pochodzi od nas samego (bo my dodajemy ją od razu)
                     if (payload.payload.message.sender !== currentUser.username) {
                         appendMessageUI(payload.payload.message);
                     }
                 }
             });
 
-            // 2. Nasłuchiwanie stanu pisania
             chatChannel.on('broadcast', { event: 'typing' }, payload => {
                 const typingEl = document.getElementById('typing-indicator');
                 if (payload.payload.username !== currentUser.username) {
@@ -135,7 +140,8 @@
             const text = input.value.trim();
             if (!text) return;
 
-            // Zapisujemy wiadomość w bazie danych i pobieramy wygenerowany rekord z bazy (.select())
+            console.log("Wysyłanie wiadomości...", { room_id: roomId, sender: currentUser.username, content: text });
+
             const { data, error } = await supabaseClient.from('messages').insert([{
                 room_id: roomId,
                 sender: currentUser.username,
@@ -143,6 +149,29 @@
             }]).select();
 
             if (error) {
+                console.error("Błąd wysyłania:", error);
                 alert("Nie udało się wysłać wiadomości: " + error.message);
             } else {
                 input.value = '';
+
+                if (data && data.length > 0) {
+                    const newMsg = data[0];
+                    appendMessageUI(newMsg);
+
+                    if (chatChannel) {
+                        chatChannel.send({
+                            type: 'broadcast',
+                            event: 'new_message',
+                            payload: { message: newMsg }
+                        });
+                    }
+                }
+            }
+        }
+
+        function handleKeyPress(e) {
+            if (e.key === 'Enter') sendMessage();
+        }
+    </script>
+</body>
+</html>
