@@ -35,7 +35,6 @@
         if (!currentUser || !roomId) {
             window.location.href = 'index.html';
         } else {
-            document.getElementById('current-room-title.textContent = '#' + roomName;'); // safe setup below
             document.getElementById('current-room-title').textContent = '#' + roomName;
             loadMessages();
             setupRealtime();
@@ -110,7 +109,6 @@
             const text = input.value.trim();
             if (!text) return;
 
-            // Zapis do bazy danych (widoczny od razu w Supabase, a dzięki Realtime pojawia się u wszystkich)
             await supabaseClient.from('messages').insert([{
                 room_id: roomId,
                 sender: currentUser.username,
