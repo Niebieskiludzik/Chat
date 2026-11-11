@@ -28,7 +28,6 @@
 
     <script src="app.js"></script>
     <script>
-        // Zmienne globalne zdefiniowane na samej górze
         let chatChannel = null;
         let typingTimeout = null;
 
@@ -70,6 +69,12 @@
 
         function appendMessageUI(msg) {
             const container = document.getElementById('chat-messages');
+            
+            // Usuwamy komunikat o braku wiadomości, jeśli jest widoczny
+            if (container.innerHTML.includes('Brak wiadomości')) {
+                container.innerHTML = '';
+            }
+
             const isMine = msg.sender === currentUser.username;
             
             container.innerHTML += `
@@ -89,20 +94,17 @@
 
             chatChannel = supabaseClient.channel('room-rt-' + roomId);
 
-            chatChannel.on(
-                'postgres_changes', 
-                { event: 'INSERT', schema: 'public', table: 'messages' }, 
-                payload => {
-                    if (String(payload.new.room_id) === String(roomId)) {
-                        const container = document.getElementById('chat-messages');
-                        if (container.innerHTML.includes('Brak wiadomości')) {
-                            container.innerHTML = '';
-                        }
-                        appendMessageUI(payload.new);
+            // 1. Nasłuchiwanie impulsu nowej wiadomości (Broadcast)
+            chatChannel.on('broadcast', { event: 'new_message' }, payload => {
+                if (payload.payload && payload.payload.message) {
+                    // Dodajemy wiadomość tylko wtedy, gdy nie pochodzi od nas samego (bo my dodajemy ją od razu)
+                    if (payload.payload.message.sender !== currentUser.username) {
+                        appendMessageUI(payload.payload.message);
                     }
                 }
-            );
+            });
 
+            // 2. Nasłuchiwanie stanu pisania
             chatChannel.on('broadcast', { event: 'typing' }, payload => {
                 const typingEl = document.getElementById('typing-indicator');
                 if (payload.payload.username !== currentUser.username) {
@@ -133,22 +135,14 @@
             const text = input.value.trim();
             if (!text) return;
 
-            const { error } = await supabaseClient.from('messages').insert([{
+            // Zapisujemy wiadomość w bazie danych i pobieramy wygenerowany rekord z bazy (.select())
+            const { data, error } = await supabaseClient.from('messages').insert([{
                 room_id: roomId,
                 sender: currentUser.username,
                 content: text
-            }]);
+            }]).select();
 
             if (error) {
                 alert("Nie udało się wysłać wiadomości: " + error.message);
             } else {
                 input.value = '';
-            }
-        }
-
-        function handleKeyPress(e) {
-            if (e.key === 'Enter') sendMessage();
-        }
-    </script>
-</body>
-</html>
