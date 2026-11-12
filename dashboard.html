@@ -33,9 +33,8 @@
             <!-- Pokoje ładowane dynamicznie -->
         </div>
 
-        <!-- Panel Admina -->
         <div id="admin-panel" class="admin-panel" style="display:none;">
-            <h3>Panel Administratora</h3>
+            <h3>Panel Administratora Głównego</h3>
             <div class="admin-row">
                 <input type="text" id="new-user-name" placeholder="Nowy login">
                 <input type="text" id="new-user-pass" placeholder="Tymczasowe hasło">
@@ -44,7 +43,7 @@
         </div>
     </div>
 
-    <!-- Modal Ustawień i Personalizacji Konta -->
+    <!-- Modal Ustawień Konta -->
     <div id="settings-modal" class="modal">
         <div class="modal-content">
             <h3>Personalizacja Konta</h3>
@@ -55,7 +54,7 @@
                 <input type="file" id="avatar-file-input" accept="image/*" onchange="previewAndCompressImage(event)" style="color: var(--text-main);">
             </div>
             <div class="input-group">
-                <label>Wyświetlana nazwa (np. imię / ksywa)</label>
+                <label>Wyświetlana nazwa</label>
                 <input type="text" id="setting-display-name" placeholder="Twoja nazwa publiczna">
             </div>
             <div class="input-group">
@@ -63,15 +62,11 @@
                 <input type="text" id="setting-bio" placeholder="Co u Ciebie słychać?">
             </div>
             <div class="input-group">
-                <label>Data urodzenia (wiek)</label>
-                <input type="date" id="setting-birth-date">
-            </div>
-            <div class="input-group">
                 <label>Motyw kolorystyczny</label>
                 <select id="setting-theme">
-                    <option value="gold">Złoty (Ekskluzywny)</option>
-                    <option value="emerald">Szmaragdowy (Zielony)</option>
-                    <option value="crimson">Krwisty (Czerwony)</option>
+                    <option value="gold">Złoty</option>
+                    <option value="emerald">Szmaragdowy</option>
+                    <option value="crimson">Krwisty</option>
                 </select>
             </div>
             <div class="input-group">
@@ -133,15 +128,19 @@
         }
 
         async function loadDashboardRooms() {
-            // Pobieramy tylko te pokoje, do których użytkownik ma dostęp w tabeli room_members
-            const { data: memberships } = await supabaseClient
+            const { data: memberships, error } = await supabaseClient
                 .from('room_members')
                 .select('room_id')
                 .eq('user_id', currentUser.id);
 
+            if (error) {
+                console.error("Błąd ładowania członkostwa:", error);
+                return;
+            }
+
             const roomIds = memberships ? memberships.map(m => m.room_id) : [];
             if (roomIds.length === 0) {
-                document.getElementById('rooms-grid').innerHTML = `<p style="color:var(--text-muted);">Brak dostępnych czatów. Poproś administratora o dodanie Cię do pokoju.</p>`;
+                document.getElementById('rooms-grid').innerHTML = `<p style="color:var(--text-muted);">Brak dostępnych czatów.</p>`;
                 return;
             }
 
@@ -178,7 +177,6 @@
             window.location.href = 'chat.html';
         }
 
-        // Ustawienia
         function openSettings() {
             compressedAvatarBase64 = currentUser.avatar || null;
             const preview = document.getElementById('modal-avatar-preview');
@@ -190,7 +188,6 @@
 
             document.getElementById('setting-display-name').value = currentUser.display_name || '';
             document.getElementById('setting-bio').value = currentUser.bio || '';
-            document.getElementById('setting-birth-date').value = currentUser.birth_date || '';
             document.getElementById('setting-theme').value = currentUser.preferred_theme || 'gold';
             document.getElementById('setting-mode').value = currentUser.theme_mode || 'dark';
             document.getElementById('modal-glory-badge').textContent = `🏆 Punkty Chwały: ${currentUser.glory_points || 0}`;
@@ -246,7 +243,6 @@
             const updateData = {
                 display_name: document.getElementById('setting-display-name').value.trim(),
                 bio: document.getElementById('setting-bio').value.trim(),
-                birth_date: document.getElementById('setting-birth-date').value || null,
                 preferred_theme: document.getElementById('setting-theme').value,
                 theme_mode: document.getElementById('setting-mode').value
             };
@@ -279,9 +275,8 @@
             if (error) {
                 alert('Błąd: ' + error.message);
             } else {
-                // Automatycznie dodaj nowego użytkownika do pokoju ogólnego (id = 1)
                 if (data && data.length > 0) {
-                    await supabaseClient.from('room_members').insert([{ room_id: 1, user_id: data[0].id }]);
+                    await supabaseClient.from('room_members').insert([{ room_id: 1, user_id: data[0].id, is_admin: false }]);
                 }
                 alert('Utworzono konto pomyślnie!');
                 document.getElementById('new-user-name').value = '';
@@ -293,13 +288,18 @@
             const name = document.getElementById('modal-room-name').value.trim();
             if (!name) return alert('Podaj nazwę');
 
+            // 1. Stwórz pokój
             const { data, error } = await supabaseClient.from('rooms').insert([{ name }]).select();
             if (error) {
                 alert('Błąd: ' + error.message);
             } else if (data && data.length > 0) {
                 const newRoomId = data[0].id;
-                // Dodaj twórcę do członków pokoju
-                await supabaseClient.from('room_members').insert([{ room_id: newRoomId, user_id: currentUser.id }]);
+                // 2. Dodaj twórcę jako ADMINA tego pokoju
+                await supabaseClient.from('room_members').insert([{ 
+                    room_id: newRoomId, 
+                    user_id: currentUser.id, 
+                    is_admin: true 
+                }]);
                 alert('Utworzono pokój!');
                 closeCreateRoomModal();
                 loadDashboardRooms();
