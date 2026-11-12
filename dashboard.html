@@ -62,14 +62,6 @@
                 <input type="text" id="setting-bio" placeholder="Co u Ciebie słychać?">
             </div>
             <div class="input-group">
-                <label>Motyw kolorystyczny</label>
-                <select id="setting-theme">
-                    <option value="gold">Złoty</option>
-                    <option value="emerald">Szmaragdowy</option>
-                    <option value="crimson">Krwisty</option>
-                </select>
-            </div>
-            <div class="input-group">
                 <label>Tryb wyświetlania</label>
                 <select id="setting-mode">
                     <option value="dark">Ciemny</option>
@@ -128,34 +120,26 @@
         }
 
         async function loadDashboardRooms() {
-            console.log("Ładowanie pokoi dla użytkownika ID:", currentUser.id);
-            
             const { data: memberships, error } = await supabaseClient
                 .from('room_members')
                 .select('room_id')
                 .eq('user_id', currentUser.id);
 
             if (error) {
-                console.error("Błąd ładowania członkostwa:", error);
-                alert("Błąd ładowania członkostwa: " + error.message);
+                showToast("Błąd ładowania członkostwa");
                 return;
             }
 
             const roomIds = memberships ? memberships.map(m => m.room_id) : [];
             if (roomIds.length === 0) {
-                document.getElementById('rooms-grid').innerHTML = `<p style="color:var(--text-muted);">Brak dostępnych czatów. Stwórz nowy pokój przyciskiem powyżej.</p>`;
+                document.getElementById('rooms-grid').innerHTML = `<p style="color:var(--text-muted);">Brak dostępnych czatów.</p>`;
                 return;
             }
 
-            const { data: rooms, error: roomsError } = await supabaseClient
+            const { data: rooms } = await supabaseClient
                 .from('rooms')
                 .select('*')
                 .in('id', roomIds);
-
-            if (roomsError) {
-                console.error("Błąd pobierania pokoi:", roomsError);
-                return;
-            }
 
             const grid = document.getElementById('rooms-grid');
             grid.innerHTML = '';
@@ -196,7 +180,6 @@
 
             document.getElementById('setting-display-name').value = currentUser.display_name || '';
             document.getElementById('setting-bio').value = currentUser.bio || '';
-            document.getElementById('setting-theme').value = currentUser.preferred_theme || 'gold';
             document.getElementById('setting-mode').value = currentUser.theme_mode || 'dark';
             document.getElementById('modal-glory-badge').textContent = `🏆 Punkty Chwały: ${currentUser.glory_points || 0}`;
 
@@ -251,7 +234,6 @@
             const updateData = {
                 display_name: document.getElementById('setting-display-name').value.trim(),
                 bio: document.getElementById('setting-bio').value.trim(),
-                preferred_theme: document.getElementById('setting-theme').value,
                 theme_mode: document.getElementById('setting-mode').value
             };
             if (compressedAvatarBase64 !== null) {
@@ -264,11 +246,11 @@
                 .eq('id', currentUser.id);
 
             if (error) {
-                alert('Błąd zapisu: ' + error.message);
+                showToast('Błąd zapisu: ' + error.message);
             } else {
                 Object.assign(currentUser, updateData);
                 setCurrentUser(currentUser);
-                alert('Zapisano ustawienia!');
+                showToast('Zapisano ustawienia!');
                 closeSettings();
                 location.reload();
             }
@@ -277,16 +259,19 @@
         async function createAccount() {
             const username = document.getElementById('new-user-name').value.trim();
             const password = document.getElementById('new-user-pass').value.trim();
-            if (!username || !password) return alert('Uzupełnij dane');
+            if (!username || !password) {
+                showToast('Uzupełnij dane');
+                return;
+            }
 
             const { data, error } = await supabaseClient.from('users').insert([{ username, password, is_admin: false }]).select();
             if (error) {
-                alert('Błąd: ' + error.message);
+                showToast('Błąd: ' + error.message);
             } else {
                 if (data && data.length > 0) {
                     await supabaseClient.from('room_members').insert([{ room_id: 1, user_id: data[0].id, is_admin: false }]);
                 }
-                alert('Utworzono konto pomyślnie!');
+                showToast('Utworzono konto pomyślnie!');
                 document.getElementById('new-user-name').value = '';
                 document.getElementById('new-user-pass').value = '';
             }
@@ -294,29 +279,27 @@
 
         async function createRoom() {
             const name = document.getElementById('modal-room-name').value.trim();
-            if (!name) return alert('Podaj nazwę');
+            if (!name) {
+                showToast('Podaj nazwę pokoju');
+                return;
+            }
 
-            // 1. Stwórz pokój
-            const { data: roomData, error: roomError } = await supabaseClient.from('rooms').insert([{ name }]).select();
+            const { data: roomData, error: roomError } = await supabaseClient.from('rooms').insert([{ name, theme: 'gold' }]).select();
             if (roomError) {
-                alert('Błąd tworzenia pokoju: ' + roomError.message);
+                showToast('Błąd tworzenia pokoju');
                 return;
             }
 
             if (roomData && roomData.length > 0) {
                 const newRoomId = roomData[0].id;
-                
-                // 2. Dodaj twórcę jako ADMINA tego pokoju
                 const { error: memberError } = await supabaseClient.from('room_members').insert([{ 
                     room_id: newRoomId, 
                     user_id: currentUser.id, 
                     is_admin: true 
                 }]);
 
-                if (memberError) {
-                    alert('Pokój powstał, ale wystąpił błąd przypisania członkostwa: ' + memberError.message);
-                } else {
-                    alert('Utworzono pokój pomyślnie!');
+                if (!memberError) {
+                    showToast('Utworzono pokój pomyślnie!');
                     closeCreateRoomModal();
                     document.getElementById('modal-room-name').value = '';
                     loadDashboardRooms();
