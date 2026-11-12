@@ -16,7 +16,7 @@
             <div class="avatar" id="room-avatar">#</div>
             <div>
                 <div class="nav-title" id="current-room-title">Czat</div>
-                <div class="nav-subtitle">Zaszyfrowany pokój</div>
+                <div class="nav-subtitle" id="room-admin-status">Zaszyfrowany pokój</div>
             </div>
         </div>
         <div class="nav-right" style="justify-content: flex-end;">
@@ -37,23 +37,26 @@
         </div>
     </div>
 
-    <!-- Modal Ustawień Chatu (Zarządzanie członkami) -->
+    <!-- Modal Ustawień Chatu / Zarządzania Członkami -->
     <div id="chat-settings-modal" class="modal">
         <div class="modal-content">
             <h3>Ustawienia Pokoju</h3>
-            <p style="color:var(--text-muted); font-size:13px; margin-bottom:15px;">Zarządzaj osobami mającymi dostęp do tego czatu:</p>
+            <p style="color:var(--text-muted); font-size:13px; margin-bottom:15px;">Członkowie i zarządzanie dostępem:</p>
             
-            <div id="members-list" style="margin-bottom: 20px; max-height: 200px; overflow-y: auto;">
-                <!-- Lista członków -->
+            <div id="members-list" style="margin-bottom: 20px; max-height: 220px; overflow-y: auto;">
+                <!-- Lista członków ładuje się dynamicznie -->
             </div>
 
-            <div class="input-group">
-                <label>Dodaj użytkownika do czatu</label>
-                <div style="display:flex; gap:10px;">
-                    <select id="user-to-add-select" style="flex:1; padding:8px; background:var(--bg-color); color:var(--text-main); border:1px solid var(--border-color); border-radius:6px;">
-                        <!-- Ładowane dynamicznie -->
-                    </select>
-                    <button onclick="addUserToRoom()" style="width:auto; padding:8px 16px;">Dodaj</button>
+            <!-- Panel widoczny tylko dla administratorów pokoju -->
+            <div id="admin-controls" style="display:none; border-top: 1px solid var(--border-color); padding-top: 15px; margin-top: 15px;">
+                <div class="input-group">
+                    <label>Dodaj użytkownika do tego czatu</label>
+                    <div style="display:flex; gap:10px;">
+                        <select id="user-to-add-select" style="flex:1; padding:8px; background:var(--bg-color); color:var(--text-main); border:1px solid var(--border-color); border-radius:6px;">
+                            <!-- Opcje -->
+                        </select>
+                        <button onclick="addUserToRoom()" style="width:auto; padding:8px 16px;">Dodaj</button>
+                    </div>
                 </div>
             </div>
 
@@ -65,7 +68,8 @@
     <script>
         let chatChannel = null;
         let typingTimeout = null;
-        let usersAvatarsMap = {}; // Słownik przechowujący avatary użytkowników po nazwie
+        let usersAvatarsMap = {};
+        let isUserAdminInRoom = false;
 
         const currentUser = getCurrentUser();
         const roomIdRaw = localStorage.getItem('current_room_id');
@@ -77,10 +81,27 @@
         } else {
             document.getElementById('current-room-title').textContent = '#' + roomName;
             document.getElementById('room-avatar').textContent = roomName.charAt(0).toUpperCase();
-            loadAllUsersAvatars().then(() => {
-                loadMessages();
-                setupRealtime();
+            
+            checkAdminStatus().then(() => {
+                loadAllUsersAvatars().then(() => {
+                    loadMessages();
+                    setupRealtime();
+                });
             });
+        }
+
+        async function checkAdminStatus() {
+            const { data } = await supabaseClient
+                .from('room_members')
+                .select('is_admin')
+                .eq('room_id', roomId)
+                .eq('user_id', currentUser.id)
+                .single();
+
+            if (data && data.is_admin) {
+                isUserAdminInRoom = true;
+                document.getElementById('room-admin-status').textContent = 'Jesteś administratorem pokoju';
+            }
         }
 
         async function loadAllUsersAvatars() {
@@ -224,11 +245,17 @@
             if (e.key === 'Enter') sendMessage();
         }
 
-        // Ustawienia Chatu (Zarządzanie członkami)
+        // Ustawienia Chatu i Zarządzanie Członkami
         async function openChatSettings() {
             document.getElementById('chat-settings-modal').classList.add('active');
             loadRoomMembers();
-            loadAvailableUsersToAdd();
+            
+            if (isUserAdminInRoom) {
+                document.getElementById('admin-controls').style.display = 'block';
+                loadAvailableUsersToAdd();
+            } else {
+                document.getElementById('admin-controls').style.display = 'none';
+            }
         }
 
         function closeChatSettings() {
@@ -238,7 +265,7 @@
         async function loadRoomMembers() {
             const { data: members } = await supabaseClient
                 .from('room_members')
-                .select('user_id, users(username, display_name)')
+                .select('user_id, is_admin, users(username, display_name)')
                 .eq('room_id', roomId);
 
             const listEl = document.getElementById('members-list');
@@ -247,10 +274,17 @@
             if (members) {
                 members.forEach(m => {
                     const name = m.users.display_name || m.users.username;
+                    const adminBadge = m.is_admin ? '<span style="color:var(--accent); font-size:10px; margin-left:6px;">[ADMIN]</span>' : '';
+                    
+                    let actionButton = '';
+                    if (isUserAdminInRoom && m.user_id !== currentUser.id) {
+                        actionButton = `<button onclick="removeUserFromRoom(${m.user_id})" style="background:#333; color:#ff5555; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer;">Usuń</button>`;
+                    }
+
                     listEl.innerHTML += `
                         <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--border-color);">
-                            <span>${escapeHtml(name)} (${m.users.username})</span>
-                            ${m.user_id !== currentUser.id ? `<button onclick="removeUserFromRoom(${m.user_id})" style="background:#333; color:#ff5555; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer;">Usuń</button>` : '<span style="font-size:11px; color:var(--text-muted)">Ty</span>'}
+                            <span>${escapeHtml(name)} (${m.users.username}) ${adminBadge}</span>
+                            ${actionButton}
                         </div>
                     `;
                 });
@@ -275,10 +309,11 @@
         }
 
         async function addUserToRoom() {
+            if (!isUserAdminInRoom) return alert('Brak uprawnień!');
             const userId = document.getElementById('user-to-add-select').value;
             if (!userId) return;
 
-            const { error } = await supabaseClient.from('room_members').insert([{ room_id: roomId, user_id: parseInt(userId, 10) }]);
+            const { error } = await supabaseClient.from('room_members').insert([{ room_id: roomId, user_id: parseInt(userId, 10), is_admin: false }]);
             if (error) {
                 alert('Błąd: ' + error.message);
             } else {
@@ -288,12 +323,13 @@
         }
 
         async function removeUserFromRoom(userId) {
+            if (!isUserAdminInRoom) return alert('Brak uprawnień!');
             const { error } = await supabaseClient.from('room_members').delete().eq('room_id', roomId).eq('user_id', userId);
             if (error) {
                 alert('Błąd: ' + error.message);
             } else {
                 loadRoomMembers();
-                loadAvailableUsersToAdd();
+                if (isUserAdminInRoom) loadAvailableUsersToAdd();
             }
         }
     </script>
