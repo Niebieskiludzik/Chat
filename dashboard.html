@@ -30,20 +30,20 @@
             <button class="nav-btn" onclick="openCreateRoomModal()" style="padding: 6px 12px; font-size: 13px;">+ Nowy Czat</button>
         </h3>
         <div id="rooms-grid" class="rooms-grid">
-            <!-- Pokoje ładowane dynamicznie -->
+            <!-- Pokoje -->
         </div>
 
         <div id="admin-panel" class="admin-panel" style="display:none;">
             <h3>Panel Administratora Głównego</h3>
             <div class="admin-row">
                 <input type="text" id="new-user-name" placeholder="Nowy login">
-                <input type="text" id="new-user-pass" placeholder="Tymczasowe hasło">
+                <input type="password" id="new-user-pass" placeholder="Tymczasowe hasło">
                 <button onclick="createAccount()">Stwórz konto</button>
             </div>
         </div>
     </div>
 
-    <!-- Modal Ustawień Konta -->
+    <!-- Modal Ustawień Konta z opcją zmiany hasła -->
     <div id="settings-modal" class="modal">
         <div class="modal-content">
             <h3>Personalizacja Konta</h3>
@@ -61,6 +61,22 @@
                 <label>Status / Opis (Bio)</label>
                 <input type="text" id="setting-bio" placeholder="Co u Ciebie słychać?">
             </div>
+            
+            <!-- Sekcja zmiany hasła -->
+            <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 15px 0;">
+            <p style="color: var(--accent); font-size: 13px; font-weight: bold; margin-bottom: 10px;">Zmiana hasła (opcjonalnie)</p>
+            <div class="input-group">
+                <label>Stare hasło</label>
+                <input type="password" id="setting-old-password" placeholder="Wpisz stare hasło">
+                <button type="button" class="password-toggle" onclick="togglePasswordVisibility('setting-old-password', this)" style="top: 32px;">👁️</button>
+            </div>
+            <div class="input-group">
+                <label>Nowe hasło</label>
+                <input type="password" id="setting-new-password" placeholder="Wpisz nowe hasło">
+                <button type="button" class="password-toggle" onclick="togglePasswordVisibility('setting-new-password', this)" style="top: 32px;">👁️</button>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 15px 0;">
             <div class="input-group">
                 <label>Tryb wyświetlania</label>
                 <select id="setting-mode">
@@ -106,6 +122,17 @@
             loadDashboardRooms();
         }
 
+        function togglePasswordVisibility(fieldId, btn) {
+            const input = document.getElementById(fieldId);
+            if (input.type === 'password') {
+                input.type = 'text';
+                btn.textContent = '🙈';
+            } else {
+                input.type = 'password';
+                btn.textContent = '👁️';
+            }
+        }
+
         function updateUserHeaderInfo() {
             document.getElementById('user-display-name').textContent = currentUser.display_name || currentUser.username;
             document.getElementById('user-status-sub').textContent = currentUser.bio || 'Dostępny';
@@ -120,15 +147,10 @@
         }
 
         async function loadDashboardRooms() {
-            const { data: memberships, error } = await supabaseClient
+            const { data: memberships } = await supabaseClient
                 .from('room_members')
                 .select('room_id')
                 .eq('user_id', currentUser.id);
-
-            if (error) {
-                showToast("Błąd ładowania członkostwa");
-                return;
-            }
 
             const roomIds = memberships ? memberships.map(m => m.room_id) : [];
             if (roomIds.length === 0) {
@@ -181,6 +203,8 @@
             document.getElementById('setting-display-name').value = currentUser.display_name || '';
             document.getElementById('setting-bio').value = currentUser.bio || '';
             document.getElementById('setting-mode').value = currentUser.theme_mode || 'dark';
+            document.getElementById('setting-old-password').value = '';
+            document.getElementById('setting-new-password').value = '';
             document.getElementById('modal-glory-badge').textContent = `🏆 Punkty Chwały: ${currentUser.glory_points || 0}`;
 
             document.getElementById('settings-modal').classList.add('active');
@@ -239,6 +263,22 @@
             if (compressedAvatarBase64 !== null) {
                 updateData.avatar = compressedAvatarBase64;
             }
+
+            // Logika zmiany hasła
+            const oldPass = document.getElementById('setting-old-password').value;
+            const newPass = document.getElementById('setting-new-password').value;
+
+            if (oldPass || newPass) {
+                if (oldPass !== currentUser.password) {
+                    showToast('Stare hasło jest nie poprawne!');
+                    return;
+                }
+                if (!newPass || newPass.length < 3) {
+                    showToast('Nowe hasło musi mieć co najmniej 3 znaki');
+                    return;
+                }
+                updateData.password = newPass;
+            }
             
             const { error } = await supabaseClient
                 .from('users')
@@ -250,7 +290,7 @@
             } else {
                 Object.assign(currentUser, updateData);
                 setCurrentUser(currentUser);
-                showToast('Zapisano ustawienia!');
+                showToast('Zapisano ustawienia pomyślnie!');
                 closeSettings();
                 location.reload();
             }
@@ -260,7 +300,7 @@
             const username = document.getElementById('new-user-name').value.trim();
             const password = document.getElementById('new-user-pass').value.trim();
             if (!username || !password) {
-                showToast('Uzupełnij dane');
+                showToast('Uzupełnij dane konta');
                 return;
             }
 
