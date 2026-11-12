@@ -29,12 +29,10 @@
             <span>Czaty</span>
         </h3>
         
-        <!-- Lista konwersacji w stylu Messengera -->
         <div id="chats-list" class="chats-list">
             <!-- Ładowane dynamicznie -->
         </div>
 
-        <!-- Wielki kafel z plusem na dole (wielkości okna czatu) -->
         <div class="create-room-tile" onclick="openCreateRoomModal()" title="Stwórz nową grupę">
             +
         </div>
@@ -53,11 +51,16 @@
     <div id="settings-modal" class="modal">
         <div class="modal-content">
             <h3>Personalizacja Konta</h3>
-            <div class="avatar-preview avatar avatar-lg" id="modal-avatar-preview">U</div>
+            <div class="avatar avatar-lg" id="modal-avatar-preview">U</div>
             
             <div class="input-group">
-                <label>Zdjęcie profilowe</label>
+                <label>Wybierz kolor tła avatara (gdy brak zdjęcia)</label>
+                <div id="user-color-picker" class="color-picker-grid"></div>
+            </div>
+            <div class="input-group">
+                <label>Zdjęcie profilowe (nadpisuje kolor)</label>
                 <input type="file" id="avatar-file-input" accept="image/*" onchange="previewAndCompressImage(event)" style="color: var(--text-main);">
+                <button type="button" onclick="removeUserAvatar()" style="background:#333; color:#ff5555; margin-top:6px; padding:6px; font-size:12px;">Usuń zdjęcie (wróć do koloru)</button>
             </div>
             <div class="input-group">
                 <label>Wyświetlana nazwa</label>
@@ -98,12 +101,16 @@
         </div>
     </div>
 
-    <!-- Modal Tworzenia Grupy (Zdjecie, Nazwa, Motyw, Osoby) -->
+    <!-- Modal Tworzenia Grupy -->
     <div id="create-room-modal" class="modal">
         <div class="modal-content">
             <h3>Stwórz nową grupę</h3>
-            <div class="avatar-preview avatar avatar-lg" id="modal-room-avatar-preview">#</div>
+            <div class="avatar avatar-lg" id="modal-room-avatar-preview">#</div>
             
+            <div class="input-group">
+                <label>Wybierz kolor tła grupy</label>
+                <div id="room-color-picker" class="color-picker-grid"></div>
+            </div>
             <div class="input-group">
                 <label>Zdjęcie grupy (opcjonalnie)</label>
                 <input type="file" id="room-avatar-file-input" accept="image/*" onchange="previewAndCompressRoomImage(event)" style="color: var(--text-main);">
@@ -123,7 +130,7 @@
             <div class="input-group">
                 <label>Dodaj uczestników</label>
                 <div id="users-checkbox-container" class="users-checkbox-list">
-                    <!-- Ładowane dynamicznie -->
+                    <!-- Uczestnicy -->
                 </div>
             </div>
 
@@ -136,7 +143,10 @@
     <script>
         const currentUser = getCurrentUser();
         let compressedUserAvatar = null;
+        let selectedUserColor = currentUser.avatar_color || getRandomAvatarColor();
+        
         let compressedRoomAvatar = null;
+        let selectedRoomColor = getRandomAvatarColor();
 
         if (!currentUser) {
             window.location.href = 'index.html';
@@ -146,6 +156,63 @@
                 document.getElementById('admin-panel').style.display = 'block';
             }
             loadDashboardChats();
+            buildColorPickers();
+        }
+
+        function buildColorPickers() {
+            // User color picker
+            const userPicker = document.getElementById('user-color-picker');
+            userPicker.innerHTML = '';
+            AVATAR_COLORS.forEach(color => {
+                const swatch = document.createElement('div');
+                swatch.className = `color-swatch ${color === selectedUserColor ? 'selected' : ''}`;
+                swatch.style.backgroundColor = color;
+                swatch.onclick = () => {
+                    selectedUserColor = color;
+                    compressedUserAvatar = null; // wyczyść zdjęcie jeśli wybrano kolor
+                    document.querySelectorAll('#user-color-picker .color-swatch').forEach(s => s.classList.remove('selected'));
+                    swatch.classList.add('selected');
+                    updateUserAvatarPreview();
+                };
+                userPicker.appendChild(swatch);
+            });
+
+            // Room color picker
+            const roomPicker = document.getElementById('room-color-picker');
+            roomPicker.innerHTML = '';
+            AVATAR_COLORS.forEach(color => {
+                const swatch = document.createElement('div');
+                swatch.className = `color-swatch ${color === selectedRoomColor ? 'selected' : ''}`;
+                swatch.style.backgroundColor = color;
+                swatch.onclick = () => {
+                    selectedRoomColor = color;
+                    compressedRoomAvatar = null;
+                    document.querySelectorAll('#room-color-picker .color-swatch').forEach(s => s.classList.remove('selected'));
+                    swatch.classList.add('selected');
+                    updateRoomAvatarPreview();
+                };
+                roomPicker.appendChild(swatch);
+            });
+        }
+
+        function updateUserAvatarPreview() {
+            const preview = document.getElementById('modal-avatar-preview');
+            preview.style.backgroundColor = selectedUserColor;
+            if (compressedUserAvatar) {
+                preview.innerHTML = `<img src="${compressedUserAvatar}" alt="Preview">`;
+            } else {
+                preview.textContent = (currentUser.display_name || currentUser.username).charAt(0).toUpperCase();
+            }
+        }
+
+        function updateRoomAvatarPreview() {
+            const preview = document.getElementById('modal-room-avatar-preview');
+            preview.style.backgroundColor = selectedRoomColor;
+            if (compressedRoomAvatar) {
+                preview.innerHTML = `<img src="${compressedRoomAvatar}" alt="Preview">`;
+            } else {
+                preview.textContent = '#';
+            }
         }
 
         function togglePasswordVisibility(fieldId, btn) {
@@ -165,10 +232,11 @@
             document.getElementById('dash-device-badge').textContent = detectDeviceType();
             
             const avatarEl = document.getElementById('nav-user-avatar');
-            if (currentUser.avatar) {
+            avatarEl.style.backgroundColor = currentUser.avatar_color || '#3498db';
+            if (currentUser.avatar && currentUser.avatar.startsWith('data:image')) {
                 avatarEl.innerHTML = `<img src="${currentUser.avatar}" alt="Avatar">`;
             } else {
-                avatarEl.textContent = currentUser.username.charAt(0).toUpperCase();
+                avatarEl.textContent = (currentUser.display_name || currentUser.username).charAt(0).toUpperCase();
             }
         }
 
@@ -176,17 +244,14 @@
             if (!dateStr) return '';
             const msgDate = new Date(dateStr);
             const today = new Date();
-            
             if (msgDate.toDateString() === today.toDateString()) {
                 return msgDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
             }
-            
             const yesterday = new Date();
             yesterday.setDate(today.getDate() - 1);
             if (msgDate.toDateString() === yesterday.toDateString()) {
                 return 'Wczoraj';
             }
-            
             return msgDate.toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' });
         }
 
@@ -203,7 +268,7 @@
 
             const roomIds = memberships ? memberships.map(m => m.room_id) : [];
             if (roomIds.length === 0) {
-                document.getElementById('chats-list').innerHTML = `<p style="color:var(--text-muted); text-align:center; padding:20px;">Brak czatów. Stwórz nową grupę przyciskiem poniżej.</p>`;
+                document.getElementById('chats-list').innerHTML = `<p style="color:var(--text-muted); text-align:center; padding:20px;">Brak czatów.</p>`;
                 return;
             }
 
@@ -217,13 +282,31 @@
 
             if (rooms) {
                 for (const room of rooms) {
-                    // Pobieramy ostatnią wiadomość dla tego pokoju
+                    // Ostatnia wiadomość
                     const { data: lastMsgs } = await supabaseClient
                         .from('messages')
-                        .select('content, sender, created_at')
+                        .select('id, content, sender, created_at')
                         .eq('room_id', room.id)
                         .order('created_at', { ascending: false })
                         .limit(1);
+
+                    // Sprawdzamy czy są nieprzeczytane wiadomości
+                    const { data: readInfo } = await supabaseClient
+                        .from('message_reads')
+                        .select('last_read_at')
+                        .eq('room_id', room.id)
+                        .eq('user_id', currentUser.id)
+                        .single();
+
+                    let unreadCount = 0;
+                    if (lastMsgs && lastMsgs.length > 0) {
+                        const m = lastMsgs[0];
+                        if (!readInfo || new Date(m.created_at) > new Date(readInfo.last_read_at)) {
+                            if (m.sender !== currentUser.username) {
+                                unreadCount = 1; // Uproszczone do kropki powiadomienia
+                            }
+                        }
+                    }
 
                     let previewText = 'Brak wiadomości';
                     let timeText = '';
@@ -239,8 +322,8 @@
                     }
 
                     const firstLetter = room.name.charAt(0).toUpperCase();
-                    let avatarHtml = `<div class="avatar">${firstLetter}</div>`;
-                    if (room.avatar) {
+                    let avatarHtml = `<div class="avatar" style="background-color: ${room.avatar_color || '#9b59b6'}">${firstLetter}</div>`;
+                    if (room.avatar && room.avatar.startsWith('data:image')) {
                         avatarHtml = `<div class="avatar"><img src="${room.avatar}" alt="Avatar"></div>`;
                     }
 
@@ -249,11 +332,14 @@
                             <div class="chat-item-left">
                                 ${avatarHtml}
                                 <div class="chat-item-info">
-                                    <div class="chat-item-name"># ${escapeHtml(room.name)}</div>
+                                    <div class="chat-item-name">${escapeHtml(room.name)}</div>
                                     <div class="chat-item-preview">${escapeHtml(previewText)}</div>
                                 </div>
                             </div>
-                            <div class="chat-item-right">${timeText}</div>
+                            <div class="chat-item-right">
+                                <span>${timeText}</span>
+                                ${unreadCount > 0 ? `<div class="unread-badge">!</div>` : ''}
+                            </div>
                         </div>
                     `;
                 }
@@ -267,13 +353,11 @@
         }
 
         function openSettings() {
-            compressedUserAvatar = currentUser.avatar || null;
-            const preview = document.getElementById('modal-avatar-preview');
-            if (compressedUserAvatar) {
-                preview.innerHTML = `<img src="${compressedUserAvatar}" alt="Preview">`;
-            } else {
-                preview.textContent = currentUser.username.charAt(0).toUpperCase();
-            }
+            compressedUserAvatar = currentUser.avatar && currentUser.avatar.startsWith('data:image') ? currentUser.avatar : null;
+            selectedUserColor = currentUser.avatar_color || '#3498db';
+            
+            updateUserAvatarPreview();
+            buildColorPickers();
 
             document.getElementById('setting-display-name').value = currentUser.display_name || '';
             document.getElementById('setting-bio').value = currentUser.bio || '';
@@ -289,12 +373,18 @@
             document.getElementById('settings-modal').classList.remove('active');
         }
 
+        function removeUserAvatar() {
+            compressedUserAvatar = 'COLOR'; // znacznik do usunięcia zdjęcia w bazie
+            updateUserAvatarPreview();
+        }
+
         async function openCreateRoomModal() {
             compressedRoomAvatar = null;
-            document.getElementById('modal-room-avatar-preview').textContent = '#';
+            selectedRoomColor = getRandomAvatarColor();
             document.getElementById('modal-room-name').value = '';
+            updateRoomAvatarPreview();
+            buildColorPickers();
             
-            // Ładowanie listy użytkowników do wyboru
             const { data: users } = await supabaseClient.from('users').select('id, username, display_name');
             const container = document.getElementById('users-checkbox-container');
             container.innerHTML = '';
@@ -338,7 +428,7 @@
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, w, h);
                     compressedUserAvatar = canvas.toDataURL('image/jpeg', 0.7);
-                    document.getElementById('modal-avatar-preview').innerHTML = `<img src="${compressedUserAvatar}" alt="Preview">`;
+                    updateUserAvatarPreview();
                 }
             }
         }
@@ -361,7 +451,7 @@
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, w, h);
                     compressedRoomAvatar = canvas.toDataURL('image/jpeg', 0.7);
-                    document.getElementById('modal-room-avatar-preview').innerHTML = `<img src="${compressedRoomAvatar}" alt="Preview">`;
+                    updateRoomAvatarPreview();
                 }
             }
         }
@@ -370,9 +460,15 @@
             const updateData = {
                 display_name: document.getElementById('setting-display-name').value.trim(),
                 bio: document.getElementById('setting-bio').value.trim(),
-                theme_mode: document.getElementById('setting-mode').value
+                theme_mode: document.getElementById('setting-mode').value,
+                avatar_color: selectedUserColor
             };
-            if (compressedUserAvatar !== null) updateData.avatar = compressedUserAvatar;
+
+            if (compressedUserAvatar === 'COLOR') {
+                updateData.avatar = null;
+            } else if (compressedUserAvatar !== null) {
+                updateData.avatar = compressedUserAvatar;
+            }
 
             const oldPass = document.getElementById('setting-old-password').value;
             const newPass = document.getElementById('setting-new-password').value;
@@ -409,7 +505,14 @@
                 return;
             }
 
-            const { data, error } = await supabaseClient.from('users').insert([{ username, password, is_admin: false }]).select();
+            const randomColor = getRandomAvatarColor();
+            const { data, error } = await supabaseClient.from('users').insert([{ 
+                username, 
+                password, 
+                is_admin: false,
+                avatar_color: randomColor
+            }]).select();
+
             if (error) {
                 showToast('Błąd: ' + error.message);
             } else {
@@ -430,11 +533,14 @@
                 return;
             }
 
-            // Zbierz zaznaczonych użytkowników
             const checkboxes = document.querySelectorAll('.room-user-checkbox:checked');
             const selectedUserIds = Array.from(checkboxes).map(cb => parseInt(cb.value, 10));
 
-            const roomInsertData = { name, theme };
+            const roomInsertData = { 
+                name, 
+                theme,
+                avatar_color: selectedRoomColor 
+            };
             if (compressedRoomAvatar) roomInsertData.avatar = compressedRoomAvatar;
 
             const { data: roomData, error: roomError } = await supabaseClient.from('rooms').insert([roomInsertData]).select();
@@ -445,10 +551,7 @@
 
             if (roomData && roomData.length > 0) {
                 const newRoomId = roomData[0].id;
-                
-                // Dodaj twórcę jako admina
                 const membersToInsert = [{ room_id: newRoomId, user_id: currentUser.id, is_admin: true }];
-                // Dodaj wybrane osoby
                 selectedUserIds.forEach(uid => {
                     membersToInsert.push({ room_id: newRoomId, user_id: uid, is_admin: false });
                 });
