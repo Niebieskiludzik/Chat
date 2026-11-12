@@ -37,13 +37,18 @@
         </div>
     </div>
 
-    <!-- Modal Ustawień Chatu / Zarządzania i Motywów -->
+    <!-- Modal Ustawień Chatu (Motyw, Awatar pokoju, Członkowie) -->
     <div id="chat-settings-modal" class="modal">
         <div class="modal-content">
             <h3>Ustawienia Pokoju</h3>
             
-            <!-- Sekcja Motywu Chatu (widoczna dla admina) -->
-            <div id="room-theme-section" style="margin-bottom: 20px; display:none;">
+            <!-- Sekcja Admina (Zmiana awatara i motywu grupy) -->
+            <div id="admin-room-settings" style="display:none; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 15px;">
+                <div class="avatar-preview avatar avatar-lg" id="modal-room-avatar-edit">#</div>
+                <div class="input-group">
+                    <label>Zmień zdjęcie grupy</label>
+                    <input type="file" id="room-avatar-update-input" accept="image/*" onchange="updateRoomAvatar(event)" style="color: var(--text-main);">
+                </div>
                 <div class="input-group">
                     <label>Motyw kolorystyczny chatu</label>
                     <select id="room-theme-select" onchange="changeRoomTheme(this.value)">
@@ -63,7 +68,7 @@
                 <div class="input-group">
                     <label>Dodaj użytkownika do tego czatu</label>
                     <div style="display:flex; gap:10px;">
-                        <select id="user-to-add-select" style="flex:1; padding:8px; background:var(--bg-color); color:var(--text-main); border:1px solid var(--border-color); border-radius:6px;">
+                        <select id="user-to-add-select" style="flex:1; padding:8px; background:var(--bg-color); color:var(--text-main); border:1px solid var(--border-color); border-radius:8px;">
                             <!-- Opcje -->
                         </select>
                         <button onclick="addUserToRoom()" style="width:auto; padding:8px 16px;">Dodaj</button>
@@ -81,6 +86,7 @@
         let typingTimeout = null;
         let usersAvatarsMap = {};
         let isUserAdminInRoom = false;
+        let currentRoomData = null;
 
         const currentUser = getCurrentUser();
         const roomIdRaw = localStorage.getItem('current_room_id');
@@ -91,9 +97,8 @@
             window.location.href = 'index.html';
         } else {
             document.getElementById('current-room-title').textContent = '#' + roomName;
-            document.getElementById('room-avatar').textContent = roomName.charAt(0).toUpperCase();
             
-            loadRoomTheme().then(() => {
+            loadRoomDetails().then(() => {
                 checkAdminStatus().then(() => {
                     loadAllUsersAvatars().then(() => {
                         loadMessages();
@@ -103,16 +108,24 @@
             });
         }
 
-        async function loadRoomTheme() {
+        async function loadRoomDetails() {
             const { data } = await supabaseClient
                 .from('rooms')
-                .select('theme')
+                .select('*')
                 .eq('id', roomId)
                 .single();
 
-            if (data && data.theme) {
-                applyRoomTheme(data.theme);
-                document.getElementById('room-theme-select').value = data.theme;
+            if (data) {
+                currentRoomData = data;
+                if (data.theme) {
+                    applyRoomTheme(data.theme);
+                }
+                const avatarEl = document.getElementById('room-avatar');
+                if (data.avatar) {
+                    avatarEl.innerHTML = `<img src="${data.avatar}" alt="Room Avatar">`;
+                } else {
+                    avatarEl.textContent = roomName.charAt(0).toUpperCase();
+                }
             }
         }
 
@@ -124,21 +137,46 @@
         }
 
         async function changeRoomTheme(newTheme) {
-            if (!isUserAdminInRoom) {
-                showToast('Tylko administrator pokoju może zmienić motyw!');
-                return;
-            }
-
-            const { error } = await supabaseClient
-                .from('rooms')
-                .update({ theme: newTheme })
-                .eq('id', roomId);
-
+            if (!isUserAdminInRoom) return;
+            const { error } = await supabaseClient.from('rooms').update({ theme: newTheme }).eq('id', roomId);
             if (error) {
                 showToast('Błąd zmiany motywu');
             } else {
                 applyRoomTheme(newTheme);
                 showToast('Zmieniono motyw pokoju!');
+            }
+        }
+
+        async function updateRoomAvatar(event) {
+            if (!isUserAdminInRoom) return;
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = async function(e) {
+                const img = new Image();
+                img.src = e.target.result;
+                img.onload = async function() {
+                    const canvas = document.createElement('canvas');
+                    const MAX = 150;
+                    let w = img.width, h = img.height;
+                    if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } }
+                    else { if (h > MAX) { w *= MAX / h; h = MAX; } }
+                    canvas.width = w; canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, w, h);
+                    const base64Avatar = canvas.toDataURL('image/jpeg', 0.7);
+
+                    const { error } = await supabaseClient.from('rooms').update({ avatar: base64Avatar }).eq('id', roomId);
+                    if (error) {
+                        showToast('Błąd aktualizacji zdjęcia grupy');
+                    } else {
+                        showToast('Zaktualizowano zdjęcie grupy!');
+                        document.getElementById('room-avatar').innerHTML = `<img src="${base64Avatar}" alt="Room Avatar">`;
+                        document.getElementById('modal-room-avatar-edit').innerHTML = `<img src="${base64Avatar}" alt="Preview">`;
+                    }
+                }
             }
         }
 
@@ -218,7 +256,6 @@
             const msgDate = new Date(msg.created_at);
             const dateStr = getDateString(msgDate);
 
-            // Sprawdzamy czy minął dzień – jeśli tak, wstawiamy przerywnik daty
             if (dateStr !== lastMessageDate) {
                 lastMessageDate = dateStr;
                 container.innerHTML += `
@@ -256,10 +293,7 @@
         }
 
         function setupRealtime() {
-            if (chatChannel) {
-                supabaseClient.removeChannel(chatChannel);
-            }
-
+            if (chatChannel) supabaseClient.removeChannel(chatChannel);
             chatChannel = supabaseClient.channel('room-rt-' + roomId);
 
             chatChannel.on('broadcast', { event: 'new_message' }, payload => {
@@ -275,9 +309,7 @@
                 if (payload.payload.username !== currentUser.username) {
                     typingEl.textContent = `${payload.payload.username} pisze...`;
                     clearTimeout(window.typingTimer);
-                    window.typingTimer = setTimeout(() => {
-                        typingEl.textContent = '';
-                    }, 2000);
+                    window.typingTimer = setTimeout(() => { typingEl.textContent = ''; }, 2000);
                 }
             });
 
@@ -286,11 +318,7 @@
 
         function notifyTyping() {
             if (!chatChannel) return;
-            chatChannel.send({
-                type: 'broadcast',
-                event: 'typing',
-                payload: { username: currentUser.username }
-            });
+            chatChannel.send({ type: 'broadcast', event: 'typing', payload: { username: currentUser.username } });
         }
 
         async function sendMessage() {
@@ -308,17 +336,11 @@
                 showToast("Nie udało się wysłać wiadomości");
             } else {
                 input.value = '';
-
                 if (data && data.length > 0) {
                     const newMsg = data[0];
                     appendMessageUI(newMsg);
-
                     if (chatChannel) {
-                        chatChannel.send({
-                            type: 'broadcast',
-                            event: 'new_message',
-                            payload: { message: newMsg }
-                        });
+                        chatChannel.send({ type: 'broadcast', event: 'new_message', payload: { message: newMsg } });
                     }
                 }
             }
@@ -334,11 +356,21 @@
             
             if (isUserAdminInRoom) {
                 document.getElementById('admin-controls').style.display = 'block';
-                document.getElementById('room-theme-section').style.display = 'block';
+                document.getElementById('admin-room-settings').style.display = 'block';
                 loadAvailableUsersToAdd();
+
+                const editAvatarPrev = document.getElementById('modal-room-avatar-edit');
+                if (currentRoomData && currentRoomData.avatar) {
+                    editAvatarPrev.innerHTML = `<img src="${currentRoomData.avatar}" alt="Room Avatar">`;
+                } else {
+                    editAvatarPrev.textContent = roomName.charAt(0).toUpperCase();
+                }
+                if (currentRoomData && currentRoomData.theme) {
+                    document.getElementById('room-theme-select').value = currentRoomData.theme;
+                }
             } else {
                 document.getElementById('admin-controls').style.display = 'none';
-                document.getElementById('room-theme-section').style.display = 'none';
+                document.getElementById('admin-room-settings').style.display = 'none';
             }
         }
 
@@ -359,7 +391,6 @@
                 members.forEach(m => {
                     const name = m.users.display_name || m.users.username;
                     const adminBadge = m.is_admin ? '<span style="color:var(--accent); font-size:10px; margin-left:6px;">[ADMIN]</span>' : '';
-                    
                     let actionButton = '';
                     if (isUserAdminInRoom && m.user_id !== currentUser.id) {
                         actionButton = `<button onclick="removeUserFromRoom(${m.user_id})" style="background:#333; color:#ff5555; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer;">Usuń</button>`;
@@ -378,7 +409,6 @@
         async function loadAvailableUsersToAdd() {
             const { data: allUsers } = await supabaseClient.from('users').select('id, username, display_name');
             const { data: currentMembers } = await supabaseClient.from('room_members').select('user_id').eq('room_id', roomId);
-            
             const memberIds = currentMembers ? currentMembers.map(m => m.user_id) : [];
             const selectEl = document.getElementById('user-to-add-select');
             selectEl.innerHTML = '';
@@ -401,7 +431,7 @@
             if (error) {
                 showToast('Błąd dodawania użytkownika');
             } else {
-                showToast('Dodano użytkownika do pokoju');
+                showToast('Dodano użytkownika');
                 loadRoomMembers();
                 loadAvailableUsersToAdd();
             }
@@ -413,7 +443,7 @@
             if (error) {
                 showToast('Błąd usuwania użytkownika');
             } else {
-                showToast('Usunięto użytkownika z pokoju');
+                showToast('Usunięto użytkownika');
                 loadRoomMembers();
                 if (isUserAdminInRoom) loadAvailableUsersToAdd();
             }
