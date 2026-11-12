@@ -8,7 +8,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-    <!-- Navbar na czacie -->
     <header class="navbar">
         <div class="nav-left">
             <button class="nav-btn" onclick="window.location.href='dashboard.html'">⬅ Wróć</button>
@@ -21,7 +20,7 @@
             </div>
         </div>
         <div class="nav-right" style="justify-content: flex-end;">
-            <button class="nav-btn" onclick="openSettings()">⚙️</button>
+            <button class="nav-btn" onclick="openChatSettings()">⚙️</button>
         </div>
     </header>
 
@@ -32,36 +31,33 @@
 
         <div id="typing-indicator" class="typing-indicator"></div>
 
-        <!-- Pasek pisania z przyciskiem plusa -->
         <div class="chat-input-bar">
-            <div class="attach-container">
-                <button class="attach-btn" onclick="toggleAttachMenu()" title="Więcej opcji">+</button>
-                <!-- Rozwijane menu pod plusem -->
-                <div id="attach-menu" class="attach-menu">
-                    <div class="attach-menu-item" onclick="promptProposeTime()">⏰ Zaproponuj godzinę</div>
-                    <div class="attach-menu-item" onclick="promptProposeMatch()">⚽ Wyślij miejsce i godzinę gry</div>
-                </div>
-            </div>
-
             <input type="text" id="message-input" placeholder="Napisz wiadomość..." oninput="notifyTyping()" onkeypress="handleKeyPress(event)">
             <button class="send-btn" onclick="sendMessage()">Wyślij</button>
         </div>
     </div>
 
-    <!-- Modal Ustawień -->
-    <div id="settings-modal" class="modal">
+    <!-- Modal Ustawień Chatu (Zarządzanie członkami) -->
+    <div id="chat-settings-modal" class="modal">
         <div class="modal-content">
-            <h3>Ustawienia konta</h3>
-            <div class="avatar-preview" id="modal-avatar-preview">U</div>
+            <h3>Ustawienia Pokoju</h3>
+            <p style="color:var(--text-muted); font-size:13px; margin-bottom:15px;">Zarządzaj osobami mającymi dostęp do tego czatu:</p>
             
-            <div class="input-group" style="text-align: left;">
-                <label>Wybierz zdjęcie profilowe</label>
-                <input type="file" id="avatar-file-input" accept="image/*" onchange="previewAndCompressImage(event)" style="color: var(--text-main);">
+            <div id="members-list" style="margin-bottom: 20px; max-height: 200px; overflow-y: auto;">
+                <!-- Lista członków -->
             </div>
 
-            <button onclick="saveSettings()" style="margin-bottom: 10px;">Zapisz zmiany</button>
-            <button class="btn-decline" onclick="logout()" style="width:100%; padding:12px; border-radius:6px; border:none; font-weight:bold; cursor:pointer;">Wyloguj się</button>
-            <button onclick="closeSettings()" style="background:transparent; color:var(--text-muted); margin-top:10px; border:none; cursor:pointer;">Zamknij</button>
+            <div class="input-group">
+                <label>Dodaj użytkownika do czatu</label>
+                <div style="display:flex; gap:10px;">
+                    <select id="user-to-add-select" style="flex:1; padding:8px; background:var(--bg-color); color:var(--text-main); border:1px solid var(--border-color); border-radius:6px;">
+                        <!-- Ładowane dynamicznie -->
+                    </select>
+                    <button onclick="addUserToRoom()" style="width:auto; padding:8px 16px;">Dodaj</button>
+                </div>
+            </div>
+
+            <button onclick="closeChatSettings()" style="background:transparent; color:var(--text-muted); margin-top:15px; border:none; cursor:pointer; width:100%;">Zamknij</button>
         </div>
     </div>
 
@@ -69,7 +65,7 @@
     <script>
         let chatChannel = null;
         let typingTimeout = null;
-        let compressedAvatarBase64 = null;
+        let usersAvatarsMap = {}; // Słownik przechowujący avatary użytkowników po nazwie
 
         const currentUser = getCurrentUser();
         const roomIdRaw = localStorage.getItem('current_room_id');
@@ -81,61 +77,24 @@
         } else {
             document.getElementById('current-room-title').textContent = '#' + roomName;
             document.getElementById('room-avatar').textContent = roomName.charAt(0).toUpperCase();
-            loadMessages();
-            setupRealtime();
+            loadAllUsersAvatars().then(() => {
+                loadMessages();
+                setupRealtime();
+            });
         }
 
-        // Zamykanie menu po kliknięciu poza nim
-        window.addEventListener('click', function(e) {
-            if (!e.target.closest('.attach-container')) {
-                document.getElementById('attach-menu').classList.remove('active');
-            }
-        });
-
-        function toggleAttachMenu() {
-            document.getElementById('attach-menu').classList.toggle('active');
-        }
-
-        // Funkcje dodatkowe z menu plusa
-        function promptProposeTime() {
-            toggleAttachMenu();
-            const time = prompt("Podaj proponowaną godzinę (np. 18:30):");
-            if (time) {
-                sendSpecialMessage(`⏰ **Propozycja godziny:** ${time}`);
+        async function loadAllUsersAvatars() {
+            const { data: users } = await supabaseClient.from('users').select('username, avatar, display_name');
+            if (users) {
+                users.forEach(u => {
+                    usersAvatarsMap[u.username] = {
+                        avatar: u.avatar,
+                        displayName: u.display_name || u.username
+                    };
+                });
             }
         }
 
-        function promptProposeMatch() {
-            toggleAttachMenu();
-            const location = prompt("Podaj miejsce (np. Boisko szkolne / Orlik):");
-            if (!location) return;
-            const time = prompt("Podaj godzinę meczu (np. 17:00):");
-            if (!time) return;
-
-            sendSpecialMessage(`⚽ **Ustalenia gry:**\n📍 Miejsce: ${location}\n🕒 Godzina: ${time}`);
-        }
-
-        async function sendSpecialMessage(formattedText) {
-            const { data, error } = await supabaseClient.from('messages').insert([{
-                room_id: roomId,
-                sender: currentUser.username,
-                content: formattedText
-            }]).select();
-
-            if (!error && data && data.length > 0) {
-                const newMsg = data[0];
-                appendMessageUI(newMsg);
-                if (chatChannel) {
-                    chatChannel.send({
-                        type: 'broadcast',
-                        event: 'new_message',
-                        payload: { message: newMsg }
-                    });
-                }
-            }
-        }
-
-        // Pobieranie 50 ostatnich wiadomości
         async function loadMessages() {
             const container = document.getElementById('chat-messages');
             container.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 20px;">Ładowanie najnowszych wiadomości...</div>`;
@@ -169,16 +128,21 @@
             }
 
             const isMine = msg.sender === currentUser.username;
-            const firstLetter = msg.sender.charAt(0).toUpperCase();
+            const userInfo = usersAvatarsMap[msg.sender] || { avatar: null, displayName: msg.sender };
+            const firstLetter = userInfo.displayName.charAt(0).toUpperCase();
             
-            // Konwersja prostych enterów na nową linię
+            let avatarHtml = `<div class="avatar avatar-sm">${firstLetter}</div>`;
+            if (userInfo.avatar) {
+                avatarHtml = `<div class="avatar avatar-sm"><img src="${userInfo.avatar}" alt="Avatar"></div>`;
+            }
+            
             const formattedContent = escapeHtml(msg.content).replace(/\n/g, '<br>');
             
             container.innerHTML += `
                 <div class="message ${isMine ? 'mine' : ''}">
-                    <div class="avatar avatar-sm">${firstLetter}</div>
+                    ${!isMine ? avatarHtml : ''}
                     <div class="message-content">
-                        <div class="sender">${escapeHtml(msg.sender)}</div>
+                        <div class="sender">${escapeHtml(userInfo.displayName)}</div>
                         <div class="text">${formattedContent}</div>
                         <div class="meta">${new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
                     </div>
@@ -260,78 +224,76 @@
             if (e.key === 'Enter') sendMessage();
         }
 
-        function openSettings() {
-            compressedAvatarBase64 = currentUser.avatar || null;
-            const preview = document.getElementById('modal-avatar-preview');
-            if (compressedAvatarBase64) {
-                preview.innerHTML = `<img src="${compressedAvatarBase64}" alt="Preview">`;
-            } else {
-                preview.textContent = currentUser.username.charAt(0).toUpperCase();
-            }
-            document.getElementById('settings-modal').classList.add('active');
+        // Ustawienia Chatu (Zarządzanie członkami)
+        async function openChatSettings() {
+            document.getElementById('chat-settings-modal').classList.add('active');
+            loadRoomMembers();
+            loadAvailableUsersToAdd();
         }
 
-        function closeSettings() {
-            document.getElementById('settings-modal').classList.remove('active');
+        function closeChatSettings() {
+            document.getElementById('chat-settings-modal').classList.remove('active');
         }
 
-        function previewAndCompressImage(event) {
-            const file = event.target.files[0];
-            if (!file) return;
+        async function loadRoomMembers() {
+            const { data: members } = await supabaseClient
+                .from('room_members')
+                .select('user_id, users(username, display_name)')
+                .eq('room_id', roomId);
 
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = function(e) {
-                const img = new Image();
-                img.src = e.target.result;
-                img.onload = function() {
-                    const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 120;
-                    const MAX_HEIGHT = 120;
-                    let width = img.width;
-                    let height = img.height;
+            const listEl = document.getElementById('members-list');
+            listEl.innerHTML = '';
 
-                    if (width > height) {
-                        if (width > MAX_WIDTH) {
-                            height *= MAX_WIDTH / width;
-                            width = MAX_WIDTH;
-                        }
-                    } else {
-                        if (height > MAX_HEIGHT) {
-                            width *= MAX_HEIGHT / height;
-                            height = MAX_HEIGHT;
-                        }
-                    }
-
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, width, height);
-
-                    compressedAvatarBase64 = canvas.toDataURL('image/jpeg', 0.7);
-                    document.getElementById('modal-avatar-preview').innerHTML = `<img src="${compressedAvatarBase64}" alt="Preview">`;
-                }
+            if (members) {
+                members.forEach(m => {
+                    const name = m.users.display_name || m.users.username;
+                    listEl.innerHTML += `
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--border-color);">
+                            <span>${escapeHtml(name)} (${m.users.username})</span>
+                            ${m.user_id !== currentUser.id ? `<button onclick="removeUserFromRoom(${m.user_id})" style="background:#333; color:#ff5555; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer;">Usuń</button>` : '<span style="font-size:11px; color:var(--text-muted)">Ty</span>'}
+                        </div>
+                    `;
+                });
             }
         }
 
-        async function saveSettings() {
-            const updateData = {};
-            if (compressedAvatarBase64 !== null) {
-                updateData.avatar = compressedAvatarBase64;
-            }
+        async function loadAvailableUsersToAdd() {
+            const { data: allUsers } = await supabaseClient.from('users').select('id, username, display_name');
+            const { data: currentMembers } = await supabaseClient.from('room_members').select('user_id').eq('room_id', roomId);
             
-            const { error } = await supabaseClient
-                .from('users')
-                .update(updateData)
-                .eq('id', currentUser.id);
+            const memberIds = currentMembers ? currentMembers.map(m => m.user_id) : [];
+            const selectEl = document.getElementById('user-to-add-select');
+            selectEl.innerHTML = '';
 
+            if (allUsers) {
+                allUsers.forEach(u => {
+                    if (!memberIds.includes(u.id)) {
+                        selectEl.innerHTML += `<option value="${u.id}">${u.display_name || u.username} (${u.username})</option>`;
+                    }
+                });
+            }
+        }
+
+        async function addUserToRoom() {
+            const userId = document.getElementById('user-to-add-select').value;
+            if (!userId) return;
+
+            const { error } = await supabaseClient.from('room_members').insert([{ room_id: roomId, user_id: parseInt(userId, 10) }]);
             if (error) {
-                alert('Błąd zapisu ustawień: ' + error.message);
+                alert('Błąd: ' + error.message);
             } else {
-                if (compressedAvatarBase64 !== null) currentUser.avatar = compressedAvatarBase64;
-                setCurrentUser(currentUser);
-                alert('Zapisano ustawienia!');
-                closeSettings();
+                loadRoomMembers();
+                loadAvailableUsersToAdd();
+            }
+        }
+
+        async function removeUserFromRoom(userId) {
+            const { error } = await supabaseClient.from('room_members').delete().eq('room_id', roomId).eq('user_id', userId);
+            if (error) {
+                alert('Błąd: ' + error.message);
+            } else {
+                loadRoomMembers();
+                loadAvailableUsersToAdd();
             }
         }
     </script>
