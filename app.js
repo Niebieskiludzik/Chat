@@ -26,15 +26,27 @@ function setCurrentUser(user) {
 
 function applyUserTheme(user) {
     if (!user) return;
-    document.body.className = '';
-    if (user.preferred_theme) {
-        document.body.classList.add(`theme-${user.preferred_theme}`);
-    } else {
-        document.body.classList.add('theme-gold');
-    }
+    document.body.classList.remove('theme-light');
     if (user.theme_mode === 'light') {
         document.body.classList.add('theme-light');
     }
+}
+
+// Własne powiadomienie typu Toast (zastępuje alerty)
+function showToast(message) {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        document.body.appendChild(container);
+    }
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = message;
+    container.appendChild(toast);
+    setTimeout(() => {
+        toast.remove();
+    }, 4000);
 }
 
 function logout() {
