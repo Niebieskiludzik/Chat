@@ -26,11 +26,17 @@
 
     <div class="dashboard-container">
         <h3 class="section-title">
-            <span>Twoje Czaty</span>
-            <button class="nav-btn" onclick="openCreateRoomModal()" style="padding: 6px 12px; font-size: 13px;">+ Nowy Czat</button>
+            <span>Czaty</span>
         </h3>
-        <div id="rooms-grid" class="rooms-grid">
-            <!-- Pokoje -->
+        
+        <!-- Lista konwersacji w stylu Messengera -->
+        <div id="chats-list" class="chats-list">
+            <!-- Ładowane dynamicznie -->
+        </div>
+
+        <!-- Wielki kafel z plusem na dole (wielkości okna czatu) -->
+        <div class="create-room-tile" onclick="openCreateRoomModal()" title="Stwórz nową grupę">
+            +
         </div>
 
         <div id="admin-panel" class="admin-panel" style="display:none;">
@@ -43,11 +49,11 @@
         </div>
     </div>
 
-    <!-- Modal Ustawień Konta z opcją zmiany hasła -->
+    <!-- Modal Ustawień Konta -->
     <div id="settings-modal" class="modal">
         <div class="modal-content">
             <h3>Personalizacja Konta</h3>
-            <div class="avatar-preview" id="modal-avatar-preview">U</div>
+            <div class="avatar-preview avatar avatar-lg" id="modal-avatar-preview">U</div>
             
             <div class="input-group">
                 <label>Zdjęcie profilowe</label>
@@ -61,22 +67,6 @@
                 <label>Status / Opis (Bio)</label>
                 <input type="text" id="setting-bio" placeholder="Co u Ciebie słychać?">
             </div>
-            
-            <!-- Sekcja zmiany hasła -->
-            <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 15px 0;">
-            <p style="color: var(--accent); font-size: 13px; font-weight: bold; margin-bottom: 10px;">Zmiana hasła (opcjonalnie)</p>
-            <div class="input-group">
-                <label>Stare hasło</label>
-                <input type="password" id="setting-old-password" placeholder="Wpisz stare hasło">
-                <button type="button" class="password-toggle" onclick="togglePasswordVisibility('setting-old-password', this)" style="top: 32px;">👁️</button>
-            </div>
-            <div class="input-group">
-                <label>Nowe hasło</label>
-                <input type="password" id="setting-new-password" placeholder="Wpisz nowe hasło">
-                <button type="button" class="password-toggle" onclick="togglePasswordVisibility('setting-new-password', this)" style="top: 32px;">👁️</button>
-            </div>
-
-            <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 15px 0;">
             <div class="input-group">
                 <label>Tryb wyświetlania</label>
                 <select id="setting-mode">
@@ -84,33 +74,69 @@
                     <option value="light">Jasny</option>
                 </select>
             </div>
-            <div style="margin-bottom: 15px; text-align: center;">
+            
+            <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 15px 0;">
+            <p style="color: var(--accent); font-size: 13px; font-weight: bold; margin-bottom: 10px;">Zmiana hasła</p>
+            <div class="input-group">
+                <label>Stare hasło</label>
+                <input type="password" id="setting-old-password" placeholder="Stare hasło">
+                <button type="button" class="password-toggle" onclick="togglePasswordVisibility('setting-old-password', this)" style="top: 34px;">👁️</button>
+            </div>
+            <div class="input-group">
+                <label>Nowe hasło</label>
+                <input type="password" id="setting-new-password" placeholder="Nowe hasło">
+                <button type="button" class="password-toggle" onclick="togglePasswordVisibility('setting-new-password', this)" style="top: 34px;">👁️</button>
+            </div>
+
+            <div style="margin: 15px 0; text-align: center;">
                 <span class="glory-badge" id="modal-glory-badge">🏆 Punkty Chwały: 0</span>
             </div>
 
             <button onclick="saveSettings()" style="margin-bottom: 10px;">Zapisz zmiany</button>
-            <button class="btn-decline" onclick="logout()" style="width:100%; padding:12px; border-radius:6px; border:none; font-weight:bold; cursor:pointer;">Wyloguj się</button>
+            <button class="btn-decline" onclick="logout()" style="width:100%; padding:12px; border-radius:8px; border:none; font-weight:bold; cursor:pointer;">Wyloguj się</button>
             <button onclick="closeSettings()" style="background:transparent; color:var(--text-muted); margin-top:10px; border:none; cursor:pointer; width:100%;">Zamknij</button>
         </div>
     </div>
 
-    <!-- Modal Tworzenia Pokoju -->
+    <!-- Modal Tworzenia Grupy (Zdjecie, Nazwa, Motyw, Osoby) -->
     <div id="create-room-modal" class="modal">
         <div class="modal-content">
-            <h3>Stwórz nowy czat</h3>
+            <h3>Stwórz nową grupę</h3>
+            <div class="avatar-preview avatar avatar-lg" id="modal-room-avatar-preview">#</div>
+            
             <div class="input-group">
-                <label>Nazwa pokoju</label>
+                <label>Zdjęcie grupy (opcjonalnie)</label>
+                <input type="file" id="room-avatar-file-input" accept="image/*" onchange="previewAndCompressRoomImage(event)" style="color: var(--text-main);">
+            </div>
+            <div class="input-group">
+                <label>Nazwa grupy</label>
                 <input type="text" id="modal-room-name" placeholder="np. Ekipa z boiska">
             </div>
-            <button onclick="createRoom()">Utwórz</button>
-            <button onclick="closeCreateRoomModal()" style="background:transparent; color:var(--text-muted); margin-top:10px; border:none; cursor:pointer; width:100%;">Anuluj</button>
+            <div class="input-group">
+                <label>Motyw kolorystyczny</label>
+                <select id="modal-room-theme">
+                    <option value="gold">Złoty</option>
+                    <option value="emerald">Szmaragdowy (Zielony)</option>
+                    <option value="crimson">Krwisty (Czerwony)</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label>Dodaj uczestników</label>
+                <div id="users-checkbox-container" class="users-checkbox-list">
+                    <!-- Ładowane dynamicznie -->
+                </div>
+            </div>
+
+            <button onclick="createRoom()" style="margin-bottom: 10px;">Utwórz grupę</button>
+            <button onclick="closeCreateRoomModal()" style="background:transparent; color:var(--text-muted); border:none; cursor:pointer; width:100%;">Anuluj</button>
         </div>
     </div>
 
     <script src="app.js"></script>
     <script>
         const currentUser = getCurrentUser();
-        let compressedAvatarBase64 = null;
+        let compressedUserAvatar = null;
+        let compressedRoomAvatar = null;
 
         if (!currentUser) {
             window.location.href = 'index.html';
@@ -119,7 +145,7 @@
             if (currentUser.is_admin) {
                 document.getElementById('admin-panel').style.display = 'block';
             }
-            loadDashboardRooms();
+            loadDashboardChats();
         }
 
         function togglePasswordVisibility(fieldId, btn) {
@@ -146,15 +172,38 @@
             }
         }
 
-        async function loadDashboardRooms() {
-            const { data: memberships } = await supabaseClient
+        function formatMessageDate(dateStr) {
+            if (!dateStr) return '';
+            const msgDate = new Date(dateStr);
+            const today = new Date();
+            
+            if (msgDate.toDateString() === today.toDateString()) {
+                return msgDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            }
+            
+            const yesterday = new Date();
+            yesterday.setDate(today.getDate() - 1);
+            if (msgDate.toDateString() === yesterday.toDateString()) {
+                return 'Wczoraj';
+            }
+            
+            return msgDate.toLocaleDateString('pl-PL', { day: 'numeric', month: 'short' });
+        }
+
+        async function loadDashboardChats() {
+            const { data: memberships, error } = await supabaseClient
                 .from('room_members')
                 .select('room_id')
                 .eq('user_id', currentUser.id);
 
+            if (error) {
+                showToast("Błąd ładowania konwersacji");
+                return;
+            }
+
             const roomIds = memberships ? memberships.map(m => m.room_id) : [];
             if (roomIds.length === 0) {
-                document.getElementById('rooms-grid').innerHTML = `<p style="color:var(--text-muted);">Brak dostępnych czatów.</p>`;
+                document.getElementById('chats-list').innerHTML = `<p style="color:var(--text-muted); text-align:center; padding:20px;">Brak czatów. Stwórz nową grupę przyciskiem poniżej.</p>`;
                 return;
             }
 
@@ -163,25 +212,51 @@
                 .select('*')
                 .in('id', roomIds);
 
-            const grid = document.getElementById('rooms-grid');
-            grid.innerHTML = '';
-            
+            const chatsListEl = document.getElementById('chats-list');
+            chatsListEl.innerHTML = '';
+
             if (rooms) {
-                rooms.forEach(room => {
+                for (const room of rooms) {
+                    // Pobieramy ostatnią wiadomość dla tego pokoju
+                    const { data: lastMsgs } = await supabaseClient
+                        .from('messages')
+                        .select('content, sender, created_at')
+                        .eq('room_id', room.id)
+                        .order('created_at', { ascending: false })
+                        .limit(1);
+
+                    let previewText = 'Brak wiadomości';
+                    let timeText = '';
+
+                    if (lastMsgs && lastMsgs.length > 0) {
+                        const m = lastMsgs[0];
+                        timeText = formatMessageDate(m.created_at);
+                        if (m.sender === currentUser.username) {
+                            previewText = `Ty: ${m.content}`;
+                        } else {
+                            previewText = `${m.sender}: ${m.content}`;
+                        }
+                    }
+
                     const firstLetter = room.name.charAt(0).toUpperCase();
-                    grid.innerHTML += `
-                        <div class="room-card" onclick="openRoom('${room.id}', '${room.name}')">
-                            <div class="room-info">
-                                <div class="avatar">${firstLetter}</div>
-                                <div>
-                                    <h3># ${room.name}</h3>
-                                    <p>Kliknij, aby otworzyć</p>
+                    let avatarHtml = `<div class="avatar">${firstLetter}</div>`;
+                    if (room.avatar) {
+                        avatarHtml = `<div class="avatar"><img src="${room.avatar}" alt="Avatar"></div>`;
+                    }
+
+                    chatsListEl.innerHTML += `
+                        <div class="chat-list-item" onclick="openRoom('${room.id}', '${room.name}')">
+                            <div class="chat-item-left">
+                                ${avatarHtml}
+                                <div class="chat-item-info">
+                                    <div class="chat-item-name"># ${escapeHtml(room.name)}</div>
+                                    <div class="chat-item-preview">${escapeHtml(previewText)}</div>
                                 </div>
                             </div>
-                            <span>➔</span>
+                            <div class="chat-item-right">${timeText}</div>
                         </div>
                     `;
-                });
+                }
             }
         }
 
@@ -192,10 +267,10 @@
         }
 
         function openSettings() {
-            compressedAvatarBase64 = currentUser.avatar || null;
+            compressedUserAvatar = currentUser.avatar || null;
             const preview = document.getElementById('modal-avatar-preview');
-            if (compressedAvatarBase64) {
-                preview.innerHTML = `<img src="${compressedAvatarBase64}" alt="Preview">`;
+            if (compressedUserAvatar) {
+                preview.innerHTML = `<img src="${compressedUserAvatar}" alt="Preview">`;
             } else {
                 preview.textContent = currentUser.username.charAt(0).toUpperCase();
             }
@@ -214,9 +289,33 @@
             document.getElementById('settings-modal').classList.remove('active');
         }
 
-        function openCreateRoomModal() {
+        async function openCreateRoomModal() {
+            compressedRoomAvatar = null;
+            document.getElementById('modal-room-avatar-preview').textContent = '#';
+            document.getElementById('modal-room-name').value = '';
+            
+            // Ładowanie listy użytkowników do wyboru
+            const { data: users } = await supabaseClient.from('users').select('id, username, display_name');
+            const container = document.getElementById('users-checkbox-container');
+            container.innerHTML = '';
+
+            if (users) {
+                users.forEach(u => {
+                    if (u.id !== currentUser.id) {
+                        const name = u.display_name || u.username;
+                        container.innerHTML += `
+                            <label class="user-checkbox-item">
+                                <input type="checkbox" value="${u.id}" class="room-user-checkbox">
+                                ${escapeHtml(name)} (${u.username})
+                            </label>
+                        `;
+                    }
+                });
+            }
+
             document.getElementById('create-room-modal').classList.add('active');
         }
+
         function closeCreateRoomModal() {
             document.getElementById('create-room-modal').classList.remove('active');
         }
@@ -224,7 +323,6 @@
         function previewAndCompressImage(event) {
             const file = event.target.files[0];
             if (!file) return;
-
             const reader = new FileReader();
             reader.readAsDataURL(file);
             reader.onload = function(e) {
@@ -232,24 +330,38 @@
                 img.src = e.target.result;
                 img.onload = function() {
                     const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 120;
-                    const MAX_HEIGHT = 120;
-                    let width = img.width;
-                    let height = img.height;
-
-                    if (width > height) {
-                        if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
-                    } else {
-                        if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
-                    }
-
-                    canvas.width = width;
-                    canvas.height = height;
+                    const MAX = 120;
+                    let w = img.width, h = img.height;
+                    if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } }
+                    else { if (h > MAX) { w *= MAX / h; h = MAX; } }
+                    canvas.width = w; canvas.height = h;
                     const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, width, height);
+                    ctx.drawImage(img, 0, 0, w, h);
+                    compressedUserAvatar = canvas.toDataURL('image/jpeg', 0.7);
+                    document.getElementById('modal-avatar-preview').innerHTML = `<img src="${compressedUserAvatar}" alt="Preview">`;
+                }
+            }
+        }
 
-                    compressedAvatarBase64 = canvas.toDataURL('image/jpeg', 0.7);
-                    document.getElementById('modal-avatar-preview').innerHTML = `<img src="${compressedAvatarBase64}" alt="Preview">`;
+        function previewAndCompressRoomImage(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = function(e) {
+                const img = new Image();
+                img.src = e.target.result;
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const MAX = 150;
+                    let w = img.width, h = img.height;
+                    if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } }
+                    else { if (h > MAX) { w *= MAX / h; h = MAX; } }
+                    canvas.width = w; canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, w, h);
+                    compressedRoomAvatar = canvas.toDataURL('image/jpeg', 0.7);
+                    document.getElementById('modal-room-avatar-preview').innerHTML = `<img src="${compressedRoomAvatar}" alt="Preview">`;
                 }
             }
         }
@@ -260,31 +372,24 @@
                 bio: document.getElementById('setting-bio').value.trim(),
                 theme_mode: document.getElementById('setting-mode').value
             };
-            if (compressedAvatarBase64 !== null) {
-                updateData.avatar = compressedAvatarBase64;
-            }
+            if (compressedUserAvatar !== null) updateData.avatar = compressedUserAvatar;
 
-            // Logika zmiany hasła
             const oldPass = document.getElementById('setting-old-password').value;
             const newPass = document.getElementById('setting-new-password').value;
 
             if (oldPass || newPass) {
                 if (oldPass !== currentUser.password) {
-                    showToast('Stare hasło jest nie poprawne!');
+                    showToast('Stare hasło jest niepoprawne!');
                     return;
                 }
                 if (!newPass || newPass.length < 3) {
-                    showToast('Nowe hasło musi mieć co najmniej 3 znaki');
+                    showToast('Nowe hasło musi mieć min. 3 znaki');
                     return;
                 }
                 updateData.password = newPass;
             }
             
-            const { error } = await supabaseClient
-                .from('users')
-                .update(updateData)
-                .eq('id', currentUser.id);
-
+            const { error } = await supabaseClient.from('users').update(updateData).eq('id', currentUser.id);
             if (error) {
                 showToast('Błąd zapisu: ' + error.message);
             } else {
@@ -300,7 +405,7 @@
             const username = document.getElementById('new-user-name').value.trim();
             const password = document.getElementById('new-user-pass').value.trim();
             if (!username || !password) {
-                showToast('Uzupełnij dane konta');
+                showToast('Uzupełnij dane');
                 return;
             }
 
@@ -319,30 +424,41 @@
 
         async function createRoom() {
             const name = document.getElementById('modal-room-name').value.trim();
+            const theme = document.getElementById('modal-room-theme').value;
             if (!name) {
-                showToast('Podaj nazwę pokoju');
+                showToast('Podaj nazwę grupy');
                 return;
             }
 
-            const { data: roomData, error: roomError } = await supabaseClient.from('rooms').insert([{ name, theme: 'gold' }]).select();
+            // Zbierz zaznaczonych użytkowników
+            const checkboxes = document.querySelectorAll('.room-user-checkbox:checked');
+            const selectedUserIds = Array.from(checkboxes).map(cb => parseInt(cb.value, 10));
+
+            const roomInsertData = { name, theme };
+            if (compressedRoomAvatar) roomInsertData.avatar = compressedRoomAvatar;
+
+            const { data: roomData, error: roomError } = await supabaseClient.from('rooms').insert([roomInsertData]).select();
             if (roomError) {
-                showToast('Błąd tworzenia pokoju');
+                showToast('Błąd tworzenia grupy');
                 return;
             }
 
             if (roomData && roomData.length > 0) {
                 const newRoomId = roomData[0].id;
-                const { error: memberError } = await supabaseClient.from('room_members').insert([{ 
-                    room_id: newRoomId, 
-                    user_id: currentUser.id, 
-                    is_admin: true 
-                }]);
+                
+                // Dodaj twórcę jako admina
+                const membersToInsert = [{ room_id: newRoomId, user_id: currentUser.id, is_admin: true }];
+                // Dodaj wybrane osoby
+                selectedUserIds.forEach(uid => {
+                    membersToInsert.push({ room_id: newRoomId, user_id: uid, is_admin: false });
+                });
+
+                const { error: memberError } = await supabaseClient.from('room_members').insert(membersToInsert);
 
                 if (!memberError) {
-                    showToast('Utworzono pokój pomyślnie!');
+                    showToast('Utworzono grupę pomyślnie!');
                     closeCreateRoomModal();
-                    document.getElementById('modal-room-name').value = '';
-                    loadDashboardRooms();
+                    loadDashboardChats();
                 }
             }
         }
