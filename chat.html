@@ -37,14 +37,17 @@
         </div>
     </div>
 
-    <!-- Modal Ustawień Chatu (Motyw, Awatar pokoju, Członkowie) -->
+    <!-- Modal Ustawień Chatu -->
     <div id="chat-settings-modal" class="modal">
         <div class="modal-content">
             <h3>Ustawienia Pokoju</h3>
             
-            <!-- Sekcja Admina (Zmiana awatara i motywu grupy) -->
             <div id="admin-room-settings" style="display:none; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 15px;">
-                <div class="avatar-preview avatar avatar-lg" id="modal-room-avatar-edit">#</div>
+                <div class="avatar avatar-lg" id="modal-room-avatar-edit">#</div>
+                <div class="input-group">
+                    <label>Wybierz kolor tła grupy</label>
+                    <div id="chat-room-color-picker" class="color-picker-grid"></div>
+                </div>
                 <div class="input-group">
                     <label>Zmień zdjęcie grupy</label>
                     <input type="file" id="room-avatar-update-input" accept="image/*" onchange="updateRoomAvatar(event)" style="color: var(--text-main);">
@@ -84,7 +87,7 @@
     <script>
         let chatChannel = null;
         let typingTimeout = null;
-        let usersAvatarsMap = {};
+        let usersMap = {}; // Przechowuje obiekt użytkownika (avatar, avatar_color, display_name)
         let isUserAdminInRoom = false;
         let currentRoomData = null;
 
@@ -96,16 +99,28 @@
         if (!currentUser || !roomId || isNaN(roomId)) {
             window.location.href = 'index.html';
         } else {
-            document.getElementById('current-room-title').textContent = '#' + roomName;
+            document.getElementById('current-room-title').textContent = roomName;
             
+            markRoomAsRead();
+
             loadRoomDetails().then(() => {
                 checkAdminStatus().then(() => {
-                    loadAllUsersAvatars().then(() => {
+                    loadAllUsersData().then(() => {
                         loadMessages();
                         setupRealtime();
                     });
                 });
             });
+        }
+
+        async function markRoomAsRead() {
+            await supabaseClient
+                .from('message_reads')
+                .upsert({
+                    room_id: roomId,
+                    user_id: currentUser.id,
+                    last_read_at: new Date().toISOString()
+                }, { onConflict: 'room_id,user_id' });
         }
 
         async function loadRoomDetails() {
@@ -117,11 +132,11 @@
 
             if (data) {
                 currentRoomData = data;
-                if (data.theme) {
-                    applyRoomTheme(data.theme);
-                }
+                if (data.theme) applyRoomTheme(data.theme);
+                
                 const avatarEl = document.getElementById('room-avatar');
-                if (data.avatar) {
+                avatarEl.style.backgroundColor = data.avatar_color || '#9b59b6';
+                if (data.avatar && data.avatar.startsWith('data:image')) {
                     avatarEl.innerHTML = `<img src="${data.avatar}" alt="Room Avatar">`;
                 } else {
                     avatarEl.textContent = roomName.charAt(0).toUpperCase();
@@ -144,6 +159,19 @@
             } else {
                 applyRoomTheme(newTheme);
                 showToast('Zmieniono motyw pokoju!');
+            }
+        }
+
+        async function updateRoomColor(color) {
+            if (!isUserAdminInRoom) return;
+            const { error } = await supabaseClient.from('rooms').update({ avatar_color: color, avatar: null }).eq('id', roomId);
+            if (error) {
+                showToast('Błąd zmiany koloru grupy');
+            } else {
+                showToast('Zmieniono kolor grupy!');
+                currentRoomData.avatar_color = color;
+                currentRoomData.avatar = null;
+                loadRoomDetails();
             }
         }
 
@@ -173,7 +201,8 @@
                         showToast('Błąd aktualizacji zdjęcia grupy');
                     } else {
                         showToast('Zaktualizowano zdjęcie grupy!');
-                        document.getElementById('room-avatar').innerHTML = `<img src="${base64Avatar}" alt="Room Avatar">`;
+                        currentRoomData.avatar = base64Avatar;
+                        loadRoomDetails();
                         document.getElementById('modal-room-avatar-edit').innerHTML = `<img src="${base64Avatar}" alt="Preview">`;
                     }
                 }
@@ -194,12 +223,13 @@
             }
         }
 
-        async function loadAllUsersAvatars() {
-            const { data: users } = await supabaseClient.from('users').select('username, avatar, display_name');
+        async function loadAllUsersData() {
+            const { data: users } = await supabaseClient.from('users').select('username, avatar, avatar_color, display_name');
             if (users) {
                 users.forEach(u => {
-                    usersAvatarsMap[u.username] = {
+                    usersMap[u.username] = {
                         avatar: u.avatar,
+                        avatarColor: u.avatar_color || '#3498db',
                         displayName: u.display_name || u.username
                     };
                 });
@@ -266,11 +296,11 @@
             }
 
             const isMine = msg.sender === currentUser.username;
-            const userInfo = usersAvatarsMap[msg.sender] || { avatar: null, displayName: msg.sender };
+            const userInfo = usersMap[msg.sender] || { avatar: null, avatarColor: '#3498db', displayName: msg.sender };
             const firstLetter = userInfo.displayName.charAt(0).toUpperCase();
             
-            let avatarHtml = `<div class="avatar avatar-sm">${firstLetter}</div>`;
-            if (userInfo.avatar) {
+            let avatarHtml = `<div class="avatar avatar-sm" style="background-color: ${userInfo.avatarColor}">${firstLetter}</div>`;
+            if (userInfo.avatar && userInfo.avatar.startsWith('data:image')) {
                 avatarHtml = `<div class="avatar avatar-sm"><img src="${userInfo.avatar}" alt="Avatar"></div>`;
             }
             
@@ -300,6 +330,7 @@
                 if (payload.payload && payload.payload.message) {
                     if (payload.payload.message.sender !== currentUser.username) {
                         appendMessageUI(payload.payload.message);
+                        markRoomAsRead(); // Oznacz jako przeczytane podczas oglądania
                     }
                 }
             });
@@ -336,6 +367,7 @@
                 showToast("Nie udało się wysłać wiadomości");
             } else {
                 input.value = '';
+                markRoomAsRead(); // Aktualizuj stan odczytu po wysłaniu własnej wiadomości
                 if (data && data.length > 0) {
                     const newMsg = data[0];
                     appendMessageUI(newMsg);
@@ -360,14 +392,28 @@
                 loadAvailableUsersToAdd();
 
                 const editAvatarPrev = document.getElementById('modal-room-avatar-edit');
-                if (currentRoomData && currentRoomData.avatar) {
+                editAvatarPrev.style.backgroundColor = currentRoomData.avatar_color || '#9b59b6';
+                if (currentRoomData && currentRoomData.avatar && currentRoomData.avatar.startsWith('data:image')) {
                     editAvatarPrev.innerHTML = `<img src="${currentRoomData.avatar}" alt="Room Avatar">`;
                 } else {
                     editAvatarPrev.textContent = roomName.charAt(0).toUpperCase();
                 }
+
                 if (currentRoomData && currentRoomData.theme) {
                     document.getElementById('room-theme-select').value = currentRoomData.theme;
                 }
+
+                // Budowanie palety kolorów w ustawieniach chatu
+                const colorPicker = document.getElementById('chat-room-color-picker');
+                colorPicker.innerHTML = '';
+                AVATAR_COLORS.forEach(color => {
+                    const swatch = document.createElement('div');
+                    swatch.className = `color-swatch ${color === currentRoomData.avatar_color ? 'selected' : ''}`;
+                    swatch.style.backgroundColor = color;
+                    swatch.onclick = () => updateRoomColor(color);
+                    colorPicker.appendChild(swatch);
+                });
+
             } else {
                 document.getElementById('admin-controls').style.display = 'none';
                 document.getElementById('admin-room-settings').style.display = 'none';
