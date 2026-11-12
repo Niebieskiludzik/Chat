@@ -37,17 +37,28 @@
         </div>
     </div>
 
-    <!-- Modal Ustawień Chatu / Zarządzania Członkami -->
+    <!-- Modal Ustawień Chatu / Zarządzania i Motywów -->
     <div id="chat-settings-modal" class="modal">
         <div class="modal-content">
             <h3>Ustawienia Pokoju</h3>
-            <p style="color:var(--text-muted); font-size:13px; margin-bottom:15px;">Członkowie i zarządzanie dostępem:</p>
             
-            <div id="members-list" style="margin-bottom: 20px; max-height: 220px; overflow-y: auto;">
-                <!-- Lista członków ładuje się dynamicznie -->
+            <!-- Sekcja Motywu Chatu (widoczna dla admina) -->
+            <div id="room-theme-section" style="margin-bottom: 20px; display:none;">
+                <div class="input-group">
+                    <label>Motyw kolorystyczny chatu</label>
+                    <select id="room-theme-select" onchange="changeRoomTheme(this.value)">
+                        <option value="gold">Złoty (Domyślny)</option>
+                        <option value="emerald">Szmaragdowy (Zielony)</option>
+                        <option value="crimson">Krwisty (Czerwony)</option>
+                    </select>
+                </div>
             </div>
 
-            <!-- Panel widoczny tylko dla administratorów pokoju -->
+            <p style="color:var(--text-muted); font-size:13px; margin-bottom:10px;">Członkowie pokoju:</p>
+            <div id="members-list" style="margin-bottom: 20px; max-height: 180px; overflow-y: auto;">
+                <!-- Lista członków -->
+            </div>
+
             <div id="admin-controls" style="display:none; border-top: 1px solid var(--border-color); padding-top: 15px; margin-top: 15px;">
                 <div class="input-group">
                     <label>Dodaj użytkownika do tego czatu</label>
@@ -82,12 +93,53 @@
             document.getElementById('current-room-title').textContent = '#' + roomName;
             document.getElementById('room-avatar').textContent = roomName.charAt(0).toUpperCase();
             
-            checkAdminStatus().then(() => {
-                loadAllUsersAvatars().then(() => {
-                    loadMessages();
-                    setupRealtime();
+            loadRoomTheme().then(() => {
+                checkAdminStatus().then(() => {
+                    loadAllUsersAvatars().then(() => {
+                        loadMessages();
+                        setupRealtime();
+                    });
                 });
             });
+        }
+
+        async function loadRoomTheme() {
+            const { data } = await supabaseClient
+                .from('rooms')
+                .select('theme')
+                .eq('id', roomId)
+                .single();
+
+            if (data && data.theme) {
+                applyRoomTheme(data.theme);
+                document.getElementById('room-theme-select').value = data.theme;
+            }
+        }
+
+        function applyRoomTheme(themeName) {
+            document.body.classList.remove('room-theme-emerald', 'room-theme-crimson');
+            if (themeName !== 'gold') {
+                document.body.classList.add(`room-theme-${themeName}`);
+            }
+        }
+
+        async function changeRoomTheme(newTheme) {
+            if (!isUserAdminInRoom) {
+                showToast('Tylko administrator pokoju może zmienić motyw!');
+                return;
+            }
+
+            const { error } = await supabaseClient
+                .from('rooms')
+                .update({ theme: newTheme })
+                .eq('id', roomId);
+
+            if (error) {
+                showToast('Błąd zmiany motywu');
+            } else {
+                applyRoomTheme(newTheme);
+                showToast('Zmieniono motyw pokoju!');
+            }
         }
 
         async function checkAdminStatus() {
@@ -100,7 +152,7 @@
 
             if (data && data.is_admin) {
                 isUserAdminInRoom = true;
-                document.getElementById('room-admin-status').textContent = 'Jesteś administratorem pokoju';
+                document.getElementById('room-admin-status').textContent = 'Administrator pokoju';
             }
         }
 
@@ -116,6 +168,8 @@
             }
         }
 
+        let lastMessageDate = null;
+
         async function loadMessages() {
             const container = document.getElementById('chat-messages');
             container.innerHTML = `<div style="color: var(--text-muted); text-align: center; margin-top: 20px;">Ładowanie najnowszych wiadomości...</div>`;
@@ -128,11 +182,13 @@
                 .limit(50);
 
             if (error) {
-                container.innerHTML = `<div style="color: #ff5555; padding: 20px; text-align: center;">Błąd bazy danych: ${error.message}</div>`;
+                container.innerHTML = `<div style="color: #ff5555; padding: 20px; text-align: center;">Błąd bazy danych</div>`;
                 return;
             }
 
             container.innerHTML = '';
+            lastMessageDate = null;
+
             if (messages && messages.length > 0) {
                 messages.reverse().forEach(msg => appendMessageUI(msg));
             } else {
@@ -141,11 +197,35 @@
             container.scrollTop = container.scrollHeight;
         }
 
+        function getDateString(dateObj) {
+            const today = new Date();
+            if (dateObj.toDateString() === today.toDateString()) return 'Dzisiaj';
+            
+            const yesterday = new Date();
+            yesterday.setDate(today.getDate() - 1);
+            if (dateObj.toDateString() === yesterday.toDateString()) return 'Wczoraj';
+
+            return dateObj.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' });
+        }
+
         function appendMessageUI(msg) {
             const container = document.getElementById('chat-messages');
             
             if (container.innerHTML.includes('Brak wiadomości') || container.innerHTML.includes('Ładowanie najnowszych')) {
                 container.innerHTML = '';
+            }
+
+            const msgDate = new Date(msg.created_at);
+            const dateStr = getDateString(msgDate);
+
+            // Sprawdzamy czy minął dzień – jeśli tak, wstawiamy przerywnik daty
+            if (dateStr !== lastMessageDate) {
+                lastMessageDate = dateStr;
+                container.innerHTML += `
+                    <div class="date-divider">
+                        <span>${dateStr}</span>
+                    </div>
+                `;
             }
 
             const isMine = msg.sender === currentUser.username;
@@ -157,6 +237,7 @@
                 avatarHtml = `<div class="avatar avatar-sm"><img src="${userInfo.avatar}" alt="Avatar"></div>`;
             }
             
+            const timeStr = msgDate.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
             const formattedContent = escapeHtml(msg.content).replace(/\n/g, '<br>');
             
             container.innerHTML += `
@@ -164,8 +245,10 @@
                     ${!isMine ? avatarHtml : ''}
                     <div class="message-content">
                         <div class="sender">${escapeHtml(userInfo.displayName)}</div>
-                        <div class="text">${formattedContent}</div>
-                        <div class="meta">${new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                        <div class="message-body">
+                            <div class="text">${formattedContent}</div>
+                            <div class="meta">${timeStr}</div>
+                        </div>
                     </div>
                 </div>
             `;
@@ -222,7 +305,7 @@
             }]).select();
 
             if (error) {
-                alert("Nie udało się wysłać wiadomości: " + error.message);
+                showToast("Nie udało się wysłać wiadomości");
             } else {
                 input.value = '';
 
@@ -245,16 +328,17 @@
             if (e.key === 'Enter') sendMessage();
         }
 
-        // Ustawienia Chatu i Zarządzanie Członkami
         async function openChatSettings() {
             document.getElementById('chat-settings-modal').classList.add('active');
             loadRoomMembers();
             
             if (isUserAdminInRoom) {
                 document.getElementById('admin-controls').style.display = 'block';
+                document.getElementById('room-theme-section').style.display = 'block';
                 loadAvailableUsersToAdd();
             } else {
                 document.getElementById('admin-controls').style.display = 'none';
+                document.getElementById('room-theme-section').style.display = 'none';
             }
         }
 
@@ -309,25 +393,27 @@
         }
 
         async function addUserToRoom() {
-            if (!isUserAdminInRoom) return alert('Brak uprawnień!');
+            if (!isUserAdminInRoom) return;
             const userId = document.getElementById('user-to-add-select').value;
             if (!userId) return;
 
             const { error } = await supabaseClient.from('room_members').insert([{ room_id: roomId, user_id: parseInt(userId, 10), is_admin: false }]);
             if (error) {
-                alert('Błąd: ' + error.message);
+                showToast('Błąd dodawania użytkownika');
             } else {
+                showToast('Dodano użytkownika do pokoju');
                 loadRoomMembers();
                 loadAvailableUsersToAdd();
             }
         }
 
         async function removeUserFromRoom(userId) {
-            if (!isUserAdminInRoom) return alert('Brak uprawnień!');
+            if (!isUserAdminInRoom) return;
             const { error } = await supabaseClient.from('room_members').delete().eq('room_id', roomId).eq('user_id', userId);
             if (error) {
-                alert('Błąd: ' + error.message);
+                showToast('Błąd usuwania użytkownika');
             } else {
+                showToast('Usunięto użytkownika z pokoju');
                 loadRoomMembers();
                 if (isUserAdminInRoom) loadAvailableUsersToAdd();
             }
