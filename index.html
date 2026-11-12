@@ -34,7 +34,10 @@
             const login = document.getElementById('login-username').value.trim();
             const pass = document.getElementById('login-password').value.trim();
 
-            if (!login || !pass) return alert('Wypełnij wszystkie pola');
+            if (!login || !pass) {
+                showToast('Wypełnij wszystkie pola');
+                return;
+            }
 
             const { data, error } = await supabaseClient
                 .from('users')
@@ -44,7 +47,7 @@
                 .single();
 
             if (error || !data) {
-                alert('Błędny login lub hasło!');
+                showToast('Błędny login lub hasło!');
                 return;
             }
 
