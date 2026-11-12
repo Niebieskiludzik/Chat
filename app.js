@@ -3,6 +3,15 @@ const SUPABASE_URL = 'https://rlgjbvocrgeyhrrmxoan.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJsZ2pidm9jcmdleWhycm14b2FuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQ0MTg2NTMsImV4cCI6MjEwOTk5NDY1M30.HwE2ClWIqbA_aNSUuqhrvRZKbC6uHQ-cNgp3_Aso1v4';
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+const AVATAR_COLORS = [
+    '#e74c3c', '#e67e22', '#f1c40f', '#2ecc71', '#1abc9c', '#3498db',
+    '#9b59b6', '#34495e', '#d35400', '#c0392b', '#16a085', '#8e44ad'
+];
+
+function getRandomAvatarColor() {
+    return AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
+}
+
 function detectDeviceType() {
     const ua = navigator.userAgent;
     let device = 'PC';
@@ -32,7 +41,6 @@ function applyUserTheme(user) {
     }
 }
 
-// Własne powiadomienie typu Toast (zastępuje alerty)
 function showToast(message) {
     let container = document.getElementById('toast-container');
     if (!container) {
@@ -55,6 +63,7 @@ function logout() {
 }
 
 function escapeHtml(text) {
+    if (!text) return '';
     return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
