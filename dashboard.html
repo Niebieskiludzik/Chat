@@ -8,7 +8,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-    <!-- Navbar -->
     <header class="navbar">
         <div class="nav-left">
             <span class="device-badge" id="dash-device-badge" style="margin:0;">PC</span>
@@ -17,7 +16,7 @@
             <div class="avatar" id="nav-user-avatar">U</div>
             <div>
                 <div class="nav-title" id="user-display-name">Użytkowniku</div>
-                <div class="nav-subtitle">Panel główny</div>
+                <div class="nav-subtitle" id="user-status-sub">Dostępny</div>
             </div>
         </div>
         <div class="nav-right" style="justify-content: flex-end;">
@@ -26,7 +25,10 @@
     </header>
 
     <div class="dashboard-container">
-        <h3 class="section-title">Wybierz Czat</h3>
+        <h3 class="section-title">
+            <span>Twoje Czaty</span>
+            <button class="nav-btn" onclick="openCreateRoomModal()" style="padding: 6px 12px; font-size: 13px;">+ Nowy Czat</button>
+        </h3>
         <div id="rooms-grid" class="rooms-grid">
             <!-- Pokoje ładowane dynamicznie -->
         </div>
@@ -39,27 +41,66 @@
                 <input type="text" id="new-user-pass" placeholder="Tymczasowe hasło">
                 <button onclick="createAccount()">Stwórz konto</button>
             </div>
-            <div class="admin-row">
-                <input type="text" id="new-room-name" placeholder="Nazwa nowego pokoju czatu">
-                <button onclick="createRoom()">Stwórz pokój</button>
-            </div>
         </div>
     </div>
 
-    <!-- Modal Ustawień i Avatarów -->
+    <!-- Modal Ustawień i Personalizacji Konta -->
     <div id="settings-modal" class="modal">
         <div class="modal-content">
-            <h3>Ustawienia konta</h3>
+            <h3>Personalizacja Konta</h3>
             <div class="avatar-preview" id="modal-avatar-preview">U</div>
             
-            <div class="input-group" style="text-align: left;">
-                <label>Wybierz zdjęcie profilowe (zmniejszy się automatycznie)</label>
+            <div class="input-group">
+                <label>Zdjęcie profilowe</label>
                 <input type="file" id="avatar-file-input" accept="image/*" onchange="previewAndCompressImage(event)" style="color: var(--text-main);">
+            </div>
+            <div class="input-group">
+                <label>Wyświetlana nazwa (np. imię / ksywa)</label>
+                <input type="text" id="setting-display-name" placeholder="Twoja nazwa publiczna">
+            </div>
+            <div class="input-group">
+                <label>Status / Opis (Bio)</label>
+                <input type="text" id="setting-bio" placeholder="Co u Ciebie słychać?">
+            </div>
+            <div class="input-group">
+                <label>Data urodzenia (wiek)</label>
+                <input type="date" id="setting-birth-date">
+            </div>
+            <div class="input-group">
+                <label>Motyw kolorystyczny</label>
+                <select id="setting-theme">
+                    <option value="gold">Złoty (Ekskluzywny)</option>
+                    <option value="emerald">Szmaragdowy (Zielony)</option>
+                    <option value="crimson">Krwisty (Czerwony)</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label>Tryb wyświetlania</label>
+                <select id="setting-mode">
+                    <option value="dark">Ciemny</option>
+                    <option value="light">Jasny</option>
+                </select>
+            </div>
+            <div style="margin-bottom: 15px; text-align: center;">
+                <span class="glory-badge" id="modal-glory-badge">🏆 Punkty Chwały: 0</span>
             </div>
 
             <button onclick="saveSettings()" style="margin-bottom: 10px;">Zapisz zmiany</button>
             <button class="btn-decline" onclick="logout()" style="width:100%; padding:12px; border-radius:6px; border:none; font-weight:bold; cursor:pointer;">Wyloguj się</button>
-            <button onclick="closeSettings()" style="background:transparent; color:var(--text-muted); margin-top:10px; border:none; cursor:pointer;">Zamknij</button>
+            <button onclick="closeSettings()" style="background:transparent; color:var(--text-muted); margin-top:10px; border:none; cursor:pointer; width:100%;">Zamknij</button>
+        </div>
+    </div>
+
+    <!-- Modal Tworzenia Pokoju -->
+    <div id="create-room-modal" class="modal">
+        <div class="modal-content">
+            <h3>Stwórz nowy czat</h3>
+            <div class="input-group">
+                <label>Nazwa pokoju</label>
+                <input type="text" id="modal-room-name" placeholder="np. Ekipa z boiska">
+            </div>
+            <button onclick="createRoom()">Utwórz</button>
+            <button onclick="closeCreateRoomModal()" style="background:transparent; color:var(--text-muted); margin-top:10px; border:none; cursor:pointer; width:100%;">Anuluj</button>
         </div>
     </div>
 
@@ -71,28 +112,44 @@
         if (!currentUser) {
             window.location.href = 'index.html';
         } else {
-            document.getElementById('user-display-name').textContent = currentUser.username;
-            document.getElementById('dash-device-badge').textContent = detectDeviceType();
-            
-            updateAvatarUI(currentUser.avatar, currentUser.username);
-
+            updateUserHeaderInfo();
             if (currentUser.is_admin) {
                 document.getElementById('admin-panel').style.display = 'block';
             }
-            loadDashboard();
+            loadDashboardRooms();
         }
 
-        function updateAvatarUI(avatarData, username) {
+        function updateUserHeaderInfo() {
+            document.getElementById('user-display-name').textContent = currentUser.display_name || currentUser.username;
+            document.getElementById('user-status-sub').textContent = currentUser.bio || 'Dostępny';
+            document.getElementById('dash-device-badge').textContent = detectDeviceType();
+            
             const avatarEl = document.getElementById('nav-user-avatar');
-            if (avatarData) {
-                avatarEl.innerHTML = `<img src="${avatarData}" alt="Avatar">`;
+            if (currentUser.avatar) {
+                avatarEl.innerHTML = `<img src="${currentUser.avatar}" alt="Avatar">`;
             } else {
-                avatarEl.textContent = username.charAt(0).toUpperCase();
+                avatarEl.textContent = currentUser.username.charAt(0).toUpperCase();
             }
         }
 
-        async function loadDashboard() {
-            const { data: rooms } = await supabaseClient.from('rooms').select('*');
+        async function loadDashboardRooms() {
+            // Pobieramy tylko te pokoje, do których użytkownik ma dostęp w tabeli room_members
+            const { data: memberships } = await supabaseClient
+                .from('room_members')
+                .select('room_id')
+                .eq('user_id', currentUser.id);
+
+            const roomIds = memberships ? memberships.map(m => m.room_id) : [];
+            if (roomIds.length === 0) {
+                document.getElementById('rooms-grid').innerHTML = `<p style="color:var(--text-muted);">Brak dostępnych czatów. Poproś administratora o dodanie Cię do pokoju.</p>`;
+                return;
+            }
+
+            const { data: rooms } = await supabaseClient
+                .from('rooms')
+                .select('*')
+                .in('id', roomIds);
+
             const grid = document.getElementById('rooms-grid');
             grid.innerHTML = '';
             
@@ -101,11 +158,14 @@
                     const firstLetter = room.name.charAt(0).toUpperCase();
                     grid.innerHTML += `
                         <div class="room-card" onclick="openRoom('${room.id}', '${room.name}')">
-                            <div class="avatar">${firstLetter}</div>
-                            <div>
-                                <h3># ${room.name}</h3>
-                                <p>Kliknij, aby wejść</p>
+                            <div class="room-info">
+                                <div class="avatar">${firstLetter}</div>
+                                <div>
+                                    <h3># ${room.name}</h3>
+                                    <p>Kliknij, aby otworzyć</p>
+                                </div>
                             </div>
+                            <span>➔</span>
                         </div>
                     `;
                 });
@@ -118,6 +178,7 @@
             window.location.href = 'chat.html';
         }
 
+        // Ustawienia
         function openSettings() {
             compressedAvatarBase64 = currentUser.avatar || null;
             const preview = document.getElementById('modal-avatar-preview');
@@ -126,6 +187,14 @@
             } else {
                 preview.textContent = currentUser.username.charAt(0).toUpperCase();
             }
+
+            document.getElementById('setting-display-name').value = currentUser.display_name || '';
+            document.getElementById('setting-bio').value = currentUser.bio || '';
+            document.getElementById('setting-birth-date').value = currentUser.birth_date || '';
+            document.getElementById('setting-theme').value = currentUser.preferred_theme || 'gold';
+            document.getElementById('setting-mode').value = currentUser.theme_mode || 'dark';
+            document.getElementById('modal-glory-badge').textContent = `🏆 Punkty Chwały: ${currentUser.glory_points || 0}`;
+
             document.getElementById('settings-modal').classList.add('active');
         }
 
@@ -133,7 +202,13 @@
             document.getElementById('settings-modal').classList.remove('active');
         }
 
-        // Funkcja automatycznie pomniejszająca i kompresująca obrazek w przeglądarce
+        function openCreateRoomModal() {
+            document.getElementById('create-room-modal').classList.add('active');
+        }
+        function closeCreateRoomModal() {
+            document.getElementById('create-room-modal').classList.remove('active');
+        }
+
         function previewAndCompressImage(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -145,21 +220,15 @@
                 img.src = e.target.result;
                 img.onload = function() {
                     const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 120; // maksymalna szerokość avatara
-                    const MAX_HEIGHT = 120; // maksymalna wysokość avatara
+                    const MAX_WIDTH = 120;
+                    const MAX_HEIGHT = 120;
                     let width = img.width;
                     let height = img.height;
 
                     if (width > height) {
-                        if (width > MAX_WIDTH) {
-                            height *= MAX_WIDTH / width;
-                            width = MAX_WIDTH;
-                        }
+                        if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
                     } else {
-                        if (height > MAX_HEIGHT) {
-                            width *= MAX_HEIGHT / height;
-                            height = MAX_HEIGHT;
-                        }
+                        if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
                     }
 
                     canvas.width = width;
@@ -167,17 +236,20 @@
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, width, height);
 
-                    // Kompresja do formatu JPEG z jakością 70% (bardzo mały rozmiar)
                     compressedAvatarBase64 = canvas.toDataURL('image/jpeg', 0.7);
-
-                    // Podgląd w modalu
                     document.getElementById('modal-avatar-preview').innerHTML = `<img src="${compressedAvatarBase64}" alt="Preview">`;
                 }
             }
         }
 
         async function saveSettings() {
-            const updateData = {};
+            const updateData = {
+                display_name: document.getElementById('setting-display-name').value.trim(),
+                bio: document.getElementById('setting-bio').value.trim(),
+                birth_date: document.getElementById('setting-birth-date').value || null,
+                preferred_theme: document.getElementById('setting-theme').value,
+                theme_mode: document.getElementById('setting-mode').value
+            };
             if (compressedAvatarBase64 !== null) {
                 updateData.avatar = compressedAvatarBase64;
             }
@@ -188,9 +260,9 @@
                 .eq('id', currentUser.id);
 
             if (error) {
-                alert('Błąd zapisu ustawień: ' + error.message);
+                alert('Błąd zapisu: ' + error.message);
             } else {
-                if (compressedAvatarBase64 !== null) currentUser.avatar = compressedAvatarBase64;
+                Object.assign(currentUser, updateData);
                 setCurrentUser(currentUser);
                 alert('Zapisano ustawienia!');
                 closeSettings();
@@ -201,27 +273,36 @@
         async function createAccount() {
             const username = document.getElementById('new-user-name').value.trim();
             const password = document.getElementById('new-user-pass').value.trim();
-            if (!username || !password) return alert('Uzupletij dane');
+            if (!username || !password) return alert('Uzupełnij dane');
 
-            const { error } = await supabaseClient.from('users').insert([{ username, password, is_admin: false }]);
-            if (error) alert('Błąd: ' + error.message);
-            else {
-                alert('Utworzono konto!');
+            const { data, error } = await supabaseClient.from('users').insert([{ username, password, is_admin: false }]).select();
+            if (error) {
+                alert('Błąd: ' + error.message);
+            } else {
+                // Automatycznie dodaj nowego użytkownika do pokoju ogólnego (id = 1)
+                if (data && data.length > 0) {
+                    await supabaseClient.from('room_members').insert([{ room_id: 1, user_id: data[0].id }]);
+                }
+                alert('Utworzono konto pomyślnie!');
                 document.getElementById('new-user-name').value = '';
                 document.getElementById('new-user-pass').value = '';
             }
         }
 
         async function createRoom() {
-            const name = document.getElementById('new-room-name').value.trim();
+            const name = document.getElementById('modal-room-name').value.trim();
             if (!name) return alert('Podaj nazwę');
 
-            const { error } = await supabaseClient.from('rooms').insert([{ name }]);
-            if (error) alert('Błąd: ' + error.message);
-            else {
+            const { data, error } = await supabaseClient.from('rooms').insert([{ name }]).select();
+            if (error) {
+                alert('Błąd: ' + error.message);
+            } else if (data && data.length > 0) {
+                const newRoomId = data[0].id;
+                // Dodaj twórcę do członków pokoju
+                await supabaseClient.from('room_members').insert([{ room_id: newRoomId, user_id: currentUser.id }]);
                 alert('Utworzono pokój!');
-                document.getElementById('new-room-name').value = '';
-                loadDashboard();
+                closeCreateRoomModal();
+                loadDashboardRooms();
             }
         }
     </script>
