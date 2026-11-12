@@ -16,11 +16,12 @@
             </div>
             <div class="input-group">
                 <label>Login</label>
-                <input type="text" id="login-username" placeholder="Wpisz swój login">
+                <input type="text" id="login-username" placeholder="Wpisz swój login" onkeypress="handleLoginKeyPress(event)">
             </div>
             <div class="input-group">
                 <label>Hasło</label>
-                <input type="password" id="login-password" placeholder="Wpisz hasło">
+                <input type="password" id="login-password" placeholder="Wpisz hasło" onkeypress="handleLoginKeyPress(event)">
+                <button type="button" class="password-toggle" onclick="togglePasswordVisibility('login-password', this)">👁️</button>
             </div>
             <button onclick="handleLogin()">Zaloguj się</button>
         </div>
@@ -29,6 +30,21 @@
     <script src="app.js"></script>
     <script>
         document.getElementById('login-device-badge').textContent = `Urządzenie: ${detectDeviceType()}`;
+
+        function togglePasswordVisibility(fieldId, btn) {
+            const input = document.getElementById(fieldId);
+            if (input.type === 'password') {
+                input.type = 'text';
+                btn.textContent = '🙈';
+            } else {
+                input.type = 'password';
+                btn.textContent = '👁️';
+            }
+        }
+
+        function handleLoginKeyPress(e) {
+            if (e.key === 'Enter') handleLogin();
+        }
 
         async function handleLogin() {
             const login = document.getElementById('login-username').value.trim();
